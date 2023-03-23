@@ -7,6 +7,7 @@ import os
 import torch
 import time
 import logging
+import threading
 
 from .args import DEFAULT_ARGS
 from .utils import (
@@ -66,7 +67,7 @@ class MangaTranslator():
     def using_cuda(self):
         return self.device.startswith('cuda')
 
-    async def translate_path(self, path: str, dest: str = None, params: dict = None):
+    async def translate_path(self, path: str, dest: str = None, params: dict = None, task_id: str = None):
         """
         Translates an image or folder (recursively) specified through the path.
         """
@@ -94,12 +95,12 @@ class MangaTranslator():
                     dest = os.path.join(dest, f'{p}-translated.png')
             dest_root = os.path.dirname(dest)
 
-            translation_dict = await self.translate(Image.open(path), params)
+            translation_dict = await self.translate(Image.open(path), params, task_id)
             result = translation_dict.result
             if result:
                 os.makedirs(dest_root, exist_ok=True)
                 result.save(dest)
-                await self._report_progress('saved', True)
+                await self._report_progress('saved', True, task_id)
 
             # TODO: Add support for reading in such a file
             if translation_dict.text_output_file and translation_dict.text_regions:
@@ -133,14 +134,14 @@ class MangaTranslator():
                     if img:
                         print()
                         logger.info(f'Processing {file_path} -> {output_dest}')
-                        translation_dict = await self.translate(img, params)
+                        translation_dict = await self.translate(img, params, task_id)
                         if not translation_dict.text_regions:
                             result = img
                         else:
                             result = translation_dict.result
                         if result:
                             result.save(output_dest)
-                            await self._report_progress('saved', True)
+                            await self._report_progress('saved', True, task_id)
                         if translation_dict.text_output_file and translation_dict.text_regions:
                             self.save_text_to_file(translation_dict, output_dest)
                         translated_count += 1
@@ -149,7 +150,7 @@ class MangaTranslator():
             else:
                 logger.info(f'Done. Translated {translated_count} image(/s)')
 
-    async def translate(self, image: Image.Image, params: dict = None) -> Context:
+    async def translate(self, image: Image.Image, params: dict = None, task_id: str = None) -> Context:
         """
         Translates a PIL image from a manga. Returns dict with result and intermediates of translation.
 
@@ -162,6 +163,7 @@ class MangaTranslator():
 
         # Turn dict to context to make values also accessible through params.<property>
         params = params or {}
+        params['task_id'] = task_id
         ctx = Context(**params)
 
         # params auto completion
@@ -215,9 +217,9 @@ class MangaTranslator():
                 return await self._translate(ctx)
             except Exception as e:
                 if isinstance(e, LanguageUnsupportedException):
-                    await self._report_progress('error-lang', True)
+                    await self._report_progress('error-lang', True, ctx.task_id)
                 else:
-                    await self._report_progress('error', True)
+                    await self._report_progress('error', True, ctx.task_id)
                 if not self.ignore_errors and not (ctx.retries == -1 or attempts < ctx.retries + 1):
                     raise
                 else:
@@ -231,53 +233,53 @@ class MangaTranslator():
         # The default text detector doesn't work very well on smaller images, might want to
         # consider adding automatic upscaling on certain kinds of small images.
         if ctx.upscale_ratio:
-            await self._report_progress('upscaling')
+            await self._report_progress('upscaling', task_id=ctx.task_id)
             ctx.input = await self._run_upscaling(ctx)
 
         ctx.img_rgb, ctx.img_alpha = load_image(ctx.input)
 
-        await self._report_progress('detection')
+        await self._report_progress('detection', task_id=ctx.task_id)
         ctx.text_regions, ctx.mask_raw, ctx.mask = await self._run_detection(ctx)
         if self.verbose:
-            cv2.imwrite(self._result_path('mask_raw.png'), ctx.mask_raw)
+            cv2.imwrite(self._result_path('mask_raw.png', ctx.task_id), ctx.mask_raw)
             bboxes = visualize_textblocks(cv2.cvtColor(ctx.img_rgb, cv2.COLOR_BGR2RGB), ctx.text_regions)
-            cv2.imwrite(self._result_path('bboxes.png'), bboxes)
+            cv2.imwrite(self._result_path('bboxes.png', ctx.task_id), bboxes)
 
         if not ctx.text_regions:
-            await self._report_progress('skip-no-regions', True)
+            await self._report_progress('skip-no-regions', True, task_id=ctx.task_id)
             return ctx
 
-        await self._report_progress('ocr')
+        await self._report_progress('ocr', task_id=ctx.task_id)
         ctx.text_regions = await self._run_ocr(ctx)
 
         if not ctx.text_regions:
-            await self._report_progress('skip-no-text', True)
+            await self._report_progress('skip-no-text', True, task_id=ctx.task_id)
             return ctx
 
         # Delayed mask refinement to take advantage of the region filtering done by ocr
         if ctx.mask is None:
-            await self._report_progress('mask-generation')
+            await self._report_progress('mask-generation', task_id=ctx.task_id)
             ctx.mask = await self._run_mask_refinement(ctx)
 
         if self.verbose:
             inpaint_input_img = await dispatch_inpainting('none', ctx.img_rgb, ctx.mask, ctx.inpainting_size, self.using_cuda, self.verbose)
-            cv2.imwrite(self._result_path('inpaint_input.png'), cv2.cvtColor(inpaint_input_img, cv2.COLOR_RGB2BGR))
-            cv2.imwrite(self._result_path('mask_final.png'), ctx.mask)
+            cv2.imwrite(self._result_path('inpaint_input.png', ctx.task_id), cv2.cvtColor(inpaint_input_img, cv2.COLOR_RGB2BGR))
+            cv2.imwrite(self._result_path('mask_final.png', ctx.task_id), ctx.mask)
 
-        await self._report_progress('inpainting')
+        await self._report_progress('inpainting', task_id=ctx.task_id)
         ctx.img_inpainted = await self._run_inpainting(ctx)
 
         if self.verbose:
-            cv2.imwrite(self._result_path('inpainted.png'), cv2.cvtColor(ctx.img_inpainted, cv2.COLOR_RGB2BGR))
+            cv2.imwrite(self._result_path('inpainted.png', ctx.task_id), cv2.cvtColor(ctx.img_inpainted, cv2.COLOR_RGB2BGR))
 
-        await self._report_progress('translating')
+        await self._report_progress('translating', task_id=ctx.task_id)
         translated_sentences = await self._run_text_translation(ctx)
 
         if not translated_sentences:
-            await self._report_progress('error-translating', True)
+            await self._report_progress('error-translating', True, task_id=ctx.task_id)
             return None
 
-        await self._report_progress('rendering')
+        await self._report_progress('rendering', task_id=ctx.task_id)
         for region, translation in zip(ctx.text_regions, translated_sentences):
             if ctx.capitalize:
                 translation = translation.upper()
@@ -289,26 +291,26 @@ class MangaTranslator():
         ctx.img_rendered = await self._run_text_rendering(ctx)
 
         if ctx.downscale:
-            await self._report_progress('downscaling')
+            await self._report_progress('downscaling', task_id=ctx.task_id)
             if ctx.img_alpha:
                 # Add alpha channel to rgb
                 ctx.img_rendered = np.concatenate([ctx.img_rendered.astype(np.uint8), np.array(ctx.img_alpha).astype(np.uint8)[..., None]], axis=2)
             ctx.img_rendered = cv2.resize(ctx.img_rendered, ctx.input.size, interpolation=cv2.INTER_LINEAR)
 
-        await self._report_progress('finished', True)
+        await self._report_progress('finished', True, task_id=ctx.task_id)
         ctx.result = dump_image(ctx.img_rendered, ctx.img_alpha)
 
         return ctx
 
-    def _result_path(self, path: str) -> str:
-        return os.path.join(BASE_PATH, 'result', self.result_sub_folder, path)
+    def _result_path(self, path: str, task_id: str = None) -> str:
+        return os.path.join(BASE_PATH, 'result', task_id if task_id is not None else self.result_sub_folder, path)
 
     def add_progress_hook(self, ph):
         self._progress_hooks.append(ph)
 
-    async def _report_progress(self, state: str, finished: bool = False):
+    async def _report_progress(self, state: str, finished: bool = False, task_id: str = None):
         for ph in self._progress_hooks:
-            await ph(state, finished)
+            await ph(state, finished, task_id)
 
     def _add_logger_hook(self):
         LOG_MESSAGES = {
@@ -330,7 +332,7 @@ class MangaTranslator():
             # 'error-lang':           'Target language not supported by chosen translator',
         }
 
-        async def ph(state, finished):
+        async def ph(state, finished, task_id):
             if state in LOG_MESSAGES:
                 logger.info(LOG_MESSAGES[state])
             elif state in LOG_MESSAGES_SKIP:
@@ -404,13 +406,13 @@ class MangaTranslatorWeb(MangaTranslator):
         """
         logger.info('Waiting for translation tasks')
 
-        async def sync_state(state: str, finished: bool):
+        async def sync_state(state: str, finished: bool, task_id: str = None):
             # wait for translation to be saved first (bad solution?)
             finished = finished and not state == 'finished'
             while True:
                 try:
                     data = {
-                        'task_id': self._task_id,
+                        'task_id': task_id,
                         'nonce': self.nonce,
                         'state': state,
                         'finished': finished,
@@ -424,34 +426,48 @@ class MangaTranslatorWeb(MangaTranslator):
                     else:
                         break
         self.add_progress_hook(sync_state)
+        
+        self.get_task_thread(translation_params)
 
+    def task_thread(self, task_id, params, translation_params):
+        logger.info(f'Processing task {task_id}')
+        if translation_params is not None:
+            # Combine default params with params chosen by webserver
+            for p, default_value in translation_params.items():
+                current_value = params.get(p)
+                print(f'{p}: {current_value} -> {default_value}')
+                params[p] = current_value if current_value is not None else default_value
+        if self.verbose:
+            # Write log file
+            log_file = self._result_path('log.txt')
+            add_file_logger(log_file)
+
+        asyncio.run(self.translate_path(self._result_path('input.png', task_id), self._result_path('final.png', task_id), params=params, task_id=task_id))
+
+        if self.verbose:
+            remove_file_logger(log_file)
+        
+        return
+
+    def get_task_thread(self, translation_params):
         while True:
-            self._task_id, self._params = self._get_task()
-            if self._params and 'exit' in self._params:
+            logger.info('Getting task')
+            task_id, params = self._get_task()
+            if params and 'exit' in params:
                 break
-            if not (self._task_id and self._params):
-                await asyncio.sleep(0.1)
+            if not (task_id and params):
+                time.sleep(1)
                 continue
 
-            self.result_sub_folder = self._task_id
-            logger.info(f'Processing task {self._task_id}')
-            if translation_params is not None:
-                # Combine default params with params chosen by webserver
-                for p, default_value in translation_params.items():
-                    current_value = self._params.get(p)
-                    self._params[p] = current_value if current_value is not None else default_value
-            if self.verbose:
-                # Write log file
-                log_file = self._result_path('log.txt')
-                add_file_logger(log_file)
+            t = threading.Thread(target=self.task_thread, args=(task_id, params, translation_params))
+            t.start()
 
-            await self.translate_path(self._result_path('input.png'), self._result_path('final.png'), params=self._params)
+    # def run_threads(self, translation_params):
+        # t1 = threading.Thread(target=self.get_task_thread, kwargs={'translation_params': translation_params})
+        # t1.start()
+        
 
-            if self.verbose:
-                remove_file_logger(log_file)
-            self._task_id = None
-            self._params = None
-            self.result_sub_folder = ''
+
 
     def _get_task(self):
         try:
@@ -464,7 +480,7 @@ class MangaTranslatorWeb(MangaTranslator):
         regions = await super()._run_ocr(ctx)
         if ctx.get('manual', False):
             requests.post(f'http://{self.host}:{self.port}/request-translation-internal', json={
-                'task_id': self._task_id,
+                'task_id': ctx.task_id,
                 'nonce': self.nonce,
                 'texts': [r.get_text() for r in regions],
             }, timeout=20)
@@ -473,7 +489,7 @@ class MangaTranslatorWeb(MangaTranslator):
     async def _run_text_translation(self, ctx: Context):
         if ctx.get('manual', False):
             requests.post(f'http://{self.host}:{self.port}/request-translation-internal', json={
-                'task_id': self._task_id,
+                'task_id': ctx.task_id,
                 'nonce': self.nonce,
                 'texts': [r.get_text() for r in ctx.text_regions]
             }, timeout=20)
@@ -482,7 +498,7 @@ class MangaTranslatorWeb(MangaTranslator):
             wait_until = time.time() + 3600
             while time.time() < wait_until:
                 ret = requests.post(f'http://{self.host}:{self.port}/get-translation-result-internal', json={
-                    'task_id': self._task_id,
+                    'task_id': ctx.task_id,
                     'nonce': self.nonce
                 }, timeout=20).json()
                 if 'result' in ret:

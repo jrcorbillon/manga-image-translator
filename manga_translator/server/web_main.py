@@ -39,7 +39,7 @@ VALID_DETECTORS = set(['default', 'ctd'])
 VALID_DIRECTIONS = set(['auto', 'h', 'v'])
 VALID_TRANSLATORS = set(['youdao', 'baidu', 'google', 'deepl', 'papago', 'offline', 'none', 'original'])
 
-MAX_ONGOING_TASKS = 1
+MAX_ONGOING_TASKS = 2
 MAX_IMAGE_SIZE_PX = 8000**2
 
 # Time to wait for web client to send a request to /task-state request
@@ -90,8 +90,10 @@ async def index_async(request):
 async def result_async(request):
     im = Image.open("result/" + request.match_info.get('taskid') + "/final.png")
     stream = BytesIO()
-    im.save(stream, "PNG")
-    return web.Response(body=stream.getvalue(), content_type='image/png')
+    im.save(stream, "WebP")
+    stream.seek(0)
+    return web.Response(body=stream.read(), content_type='image/webp')
+
 
 @routes.get("/queue-size")
 async def queue_size_async(request):
@@ -104,23 +106,67 @@ async def handle_post(request):
     target_language = 'CHS'
     detector = 'default'
     direction = 'auto'
+    ocr = '48px_ctc'
+    inpainter = 'lama_mpe'
+    upscaler = 'esrgan'
+    upscale_ratio = None
+    translator_chain = None
+    detection_auto_orient = False
+    det_rearrange_max_batches = 4
+    inpainting_size = 2048
+    unclip_ratio = 2.3
+    box_threshold = 0.7
+    text_threshold = 0.5
+    text_mag_ratio = 1
+    font_size_offset = 0
+    font_size_minimum = -1
+    downscale = False
+    manga2eng = False
+    capitalize = False
+    mtpe = False
+
+    if 'ocr' in data:
+        ocr = data['ocr']
+        if ocr not in ['32px', '48px_ctc']:
+            ocr = None
+    
+    if 'inpainter' in data:
+        inpainter = data['inpainter']
+        if inpainter not in ['default', 'lama_mpe', 'sd', 'none', 'original']:
+            inpainter = 'default'
+    
+    if 'upscaler' in data:
+        upscaler = data['upscaler']
+        if upscaler not in ['waifu2x', 'esrgan']:
+            upscaler = None
+    
+    if 'translator_chain' in data:
+        translator_chain = data['translator_chain']
+    
+    if 'detection_size' in data:
+        detection_size = int(data['detection_size'])
+    
     if 'tgt_lang' in data:
         target_language = data['tgt_lang'].upper()
         # TODO: move dicts to their own files to reduce load time
         if target_language not in VALID_LANGUAGES:
             target_language = 'CHS'
+
     if 'detector' in data:
         detector = data['detector'].lower()
         if detector not in VALID_DETECTORS:
             detector = 'default'
+
     if 'direction' in data:
         direction = data['direction'].lower()
         if direction not in VALID_DIRECTIONS:
             direction = 'auto'
+
     if 'translator' in data:
         selected_translator = data['translator'].lower()
         if selected_translator not in VALID_TRANSLATORS:
             selected_translator = 'youdao'
+
     if 'size' in data:
         size_text = data['size'].upper()
         if size_text == 'S':
@@ -131,6 +177,7 @@ async def handle_post(request):
             detection_size = 2048
         elif size_text == 'X':
             detection_size = 2560
+
     if 'file' in data:
         file_field = data['file']
         content = file_field.file.read()
@@ -150,9 +197,16 @@ async def handle_post(request):
         img = Image.open(io.BytesIO(content))
         if img.width * img.height > MAX_IMAGE_SIZE_PX:
             return web.json_response({'status': 'error-too-large'})
+        
     except Exception:
+        print('Image corrupt', file=sys.stderr)
         return web.json_response({'status': 'error-img-corrupt'})
-    return img, detection_size, selected_translator, target_language, detector, direction
+    
+    return img, detection_size, selected_translator, target_language, detector, direction, ocr, inpainter,\
+            upscaler, upscale_ratio, translator_chain, detection_auto_orient, det_rearrange_max_batches, inpainting_size,\
+            unclip_ratio, box_threshold, text_threshold, text_mag_ratio, font_size_offset, font_size_minimum,\
+            downscale, manga2eng, capitalize, mtpe
+
 
 @routes.post("/run")
 async def run_async(request):
@@ -351,7 +405,10 @@ async def submit_async(request):
     """Adds new task to the queue. Called by web client in ui.html when submitting an image."""
     x = await handle_post(request)
     if isinstance(x, tuple):
-        img, size, selected_translator, target_language, detector, direction = x
+        img, size, selected_translator, target_language, detector, direction, ocr, inpainter,\
+        upscaler, upscale_ratio, translator_chain, detection_auto_orient, det_rearrange_max_batches, inpainting_size,\
+        unclip_ratio, box_threshold, text_threshold, text_mag_ratio, font_size_offset, font_size_minimum,\
+        downscale, manga2eng, capitalize, mtpe = x
     else:
         return x
     task_id = f'{phash(img, hash_size = 16)}-{size}-{selected_translator}-{target_language}-{detector}-{direction}'
@@ -368,6 +425,24 @@ async def submit_async(request):
             'target_lang': target_language,
             'detector': detector,
             'direction': direction,
+            'ocr': ocr,
+            'inpainter': inpainter,
+            'upscaler': upscaler,
+            'upscale_ratio': upscale_ratio,
+            'translator_chain': translator_chain,
+            'detection_auto_orient': detection_auto_orient,
+            'det_rearrange_max_batches': det_rearrange_max_batches,
+            'inpainting_size': inpainting_size,
+            'unclip_ratio': unclip_ratio,
+            'box_threshold': box_threshold,
+            'text_threshold': text_threshold,
+            'text_mag_ratio': text_mag_ratio,
+            'font_size_offset': font_size_offset,
+            'font_size_minimum': font_size_minimum,
+            'downscale': downscale,
+            'manga2eng': manga2eng,
+            'capitalize': capitalize,
+            'mtpe': mtpe,
             'created_at': now,
             'requested_at': now,
         }
@@ -385,6 +460,24 @@ async def submit_async(request):
             'target_lang': target_language,
             'detector': detector,
             'direction': direction,
+            'ocr': ocr,
+            'inpainter': inpainter,
+            'upscaler': upscaler,
+            'upscale_ratio': upscale_ratio,
+            'translator_chain': translator_chain,
+            'detection_auto_orient': detection_auto_orient,
+            'det_rearrange_max_batches': det_rearrange_max_batches,
+            'inpainting_size': inpainting_size,
+            'unclip_ratio': unclip_ratio,
+            'box_threshold': box_threshold,
+            'text_threshold': text_threshold,
+            'text_mag_ratio': text_mag_ratio,
+            'font_size_offset': font_size_offset,
+            'font_size_minimum': font_size_minimum,
+            'downscale': downscale,
+            'manga2eng': manga2eng,
+            'capitalize': capitalize,
+            'mtpe': mtpe,
             'created_at': now,
             'requested_at': now,
         }
