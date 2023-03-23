@@ -48,9 +48,6 @@ $ pip install -r requirements.txt
 找一个对应 Python 版本的预编译包，并使用 `pip` 安装。\
 如果你在使用其它操作系统，可以尝试使用 `pip install git+https://github.com/lucasb-eyer/pydensecrf.git` 安装。
 
-之后从 <https://github.com/zyddnys/manga-image-translator/releases/> 下载
-`ocr.ckpt`、`ocr-ctc.ckpt`、`detect.ckpt`、`comictextdetector.pt`、`comictextdetector.pt` 和 `inpainting_lama_mpe.ckpt`，放到仓库的根目录下。
-
 [使用谷歌翻译时可选]\
 申请有道翻译或者 DeepL 的 API，把你的 `APP_KEY` 和 `APP_SECRET` 或 `AUTH_KEY` 写入 `translators/key.py` 中。
 
@@ -95,6 +92,78 @@ ESP: Spanish
 TRK: Turkish
 VIN: Vietnames
 ```
+
+<!-- Auto generated start -->
+## 选项
+    -h, --help                               show this help message and exit
+    -m, --mode {demo,batch,web,web_client,ws}
+                                             Run demo in single image demo mode (demo), batch
+                                             translation mode (batch), web service mode (web)
+    -i, --input INPUT                        Path to an image file if using demo mode, or path to an
+                                             image folder if using batch mode
+    -o, --dest DEST                          Path to the destination folder for translated images in
+                                             batch mode
+    -l, --target-lang {CHS,CHT,CSY,NLD,ENG,FRA,DEU,HUN,ITA,JPN,KOR,PLK,PTB,ROM,RUS,ESP,TRK,UKR,VIN}
+                                             Destination language
+    -v, --verbose                            Print debug info and save intermediate images in result
+                                             folder
+    --detector {default,ctd}                 Text detector used for creating a text mask from an
+                                             image
+    --ocr {32px,48px_ctc}                    Optical character recognition (OCR) model to use
+    --inpainter {default,lama_mpe,sd,none,original}
+                                             Inpainting model to use
+    --upscaler {waifu2x,esrgan}              Upscaler to use. --upscale-ratio has to be set for it
+                                             to take effect
+    --upscale-ratio {1,2,4,8,16,32}          Image upscale ratio applied before detection. Can
+                                             improve text detection.
+    --translator {google,youdao,baidu,deepl,papago,gpt3,none,original,offline,nllb,nllb_big,sugoi,jparacrawl,jparacrawl_big,m2m100,m2m100_big}
+                                             Language translator to use
+    --translator-chain TRANSLATOR_CHAIN      Output of one translator goes in another. Example:
+                                             --translator-chain "google:JPN;sugoi:ENG".
+    --use-cuda                               Turn on/off cuda
+    --use-cuda-limited                       Turn on/off cuda (excluding offline translator)
+    --model-dir MODEL_DIR                    Model directory (by default ./models in project root)
+    --retries RETRIES                        Retry attempts on encountered error. -1 means infinite
+                                             times.
+    --downscale                              Downscales resulting image to original image size (Use
+                                             with --upscale-ratio).
+    --detection-size DETECTION_SIZE          Size of image used for detection
+    --detection-auto-orient                  Rotate the image for detection to make the textlines
+                                             vertical. Might improve detection.
+    --det-rearrange-max-batches DET_REARRANGE_MAX_BATCHES
+                                             Max batch size produced by the rearrangement of image
+                                             with extreme aspectio, reduce it if cuda OOM
+    --inpainting-size INPAINTING_SIZE        Size of image used for inpainting (too large will
+                                             result in OOM)
+    --unclip-ratio UNCLIP_RATIO              How much to extend text skeleton to form bounding box
+    --box-threshold BOX_THRESHOLD            Threshold for bbox generation
+    --text-threshold TEXT_THRESHOLD          Threshold for text detection
+    --text-mag-ratio TEXT_MAG_RATIO          Text rendering magnification ratio, larger means higher
+                                             quality
+    --font-size-offset FONT_SIZE_OFFSET      Offset font size by a given amount, positive number
+                                             increase font size and vice versa
+    --font-size-minimum FONT_SIZE_MINIMUM    Minimum output font size. Default is smallest-image-
+                                             side/200
+    --force-horizontal                       Force text to be rendered horizontally
+    --force-vertical                         Force text to be rendered vertically
+    --align-left                             Align rendered text left
+    --align-center                           Align rendered text centered
+    --align-right                            Align rendered text right
+    --manga2eng                              Render english text translated from manga with some
+                                             additional typesetting. Ignores some other argument
+                                             options.
+    --capitalize                             Capitalize rendered text
+    --mtpe                                   Turn on/off machine translation post editing (MTPE) on
+                                             the command line (works only on linux right now)
+    --text-output-file TEXT_OUTPUT_FILE      File into which to save extracted text and translations
+    --font-path FONT_PATH                    Path to font file
+    --host HOST                              Used by web module to decide which host to attach to
+    --port PORT                              Used by web module to decide which port to attach to
+    --nonce NONCE                            Used by web module as secret for securing internal web
+                                             server communication
+    --ws-url WS_URL                          Server URL for WebSocket mode
+<!-- Auto generated end -->
+
 
 ### 使用命令行执行
 
