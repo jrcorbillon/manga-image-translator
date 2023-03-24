@@ -435,7 +435,6 @@ class MangaTranslatorWeb(MangaTranslator):
             # Combine default params with params chosen by webserver
             for p, default_value in translation_params.items():
                 current_value = params.get(p)
-                print(f'{p}: {current_value} -> {default_value}')
                 params[p] = current_value if current_value is not None else default_value
         if self.verbose:
             # Write log file
@@ -461,10 +460,6 @@ class MangaTranslatorWeb(MangaTranslator):
 
             t = threading.Thread(target=self.task_thread, args=(task_id, params, translation_params))
             t.start()
-
-    # def run_threads(self, translation_params):
-        # t1 = threading.Thread(target=self.get_task_thread, kwargs={'translation_params': translation_params})
-        # t1.start()
         
 
 
