@@ -1,4 +1,4 @@
-from typing import List
+import langid
 
 from .common import *
 from .baidu import BaiduTranslator
@@ -57,6 +57,7 @@ class TranslatorChain():
         if not string:
             raise Exception('Invalid translator chain')
         self.chain = []
+        self.target_lang = None
         for g in string.split(';'):
             trans, lang = g.split(':')
             if trans not in TRANSLATORS:
@@ -76,6 +77,19 @@ async def prepare(chain: TranslatorChain):
 # TODO: Optionally take in strings instead of TranslatorChain for simplicity
 async def dispatch(chain: TranslatorChain, queries: List[str], use_mtpe: bool = False, device: str = 'cpu') -> List[str]:
     if not queries:
+        return queries
+    if chain.target_lang is not None:
+        text_lang = ISO_639_1_TO_VALID_LANGUAGES.get(langid.classify('\n'.join(queries))[0])
+        translator = None
+        for key, lang in chain.chain:
+            if text_lang == lang:
+                translator = get_translator(key)
+                break
+        if translator is None:
+            translator = get_translator(chain.langs[0])
+        if isinstance(translator, OfflineTranslator):
+            await translator.load('auto', chain.target_lang, device)
+        queries = await translator.translate('auto', chain.target_lang, queries, use_mtpe)
         return queries
 
     for key, tgt_lang in chain.chain:
