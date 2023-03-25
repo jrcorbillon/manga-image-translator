@@ -13,6 +13,7 @@ from .ctd_utils.utils.imgproc_utils import letterbox
 from .ctd_utils.textmask import REFINEMASK_INPAINT, refine_mask
 from .common import OfflineDetector
 from ..utils import TextBlock, Quadrilateral, det_rearrange_forward
+from .textline_merge import dispatch as dispatch_textline_merge
 
 def preprocess_img(img, input_size=(1024, 1024), device='cpu', bgr2rgb=True, half=False, to_tensor=True):
     if bgr2rgb:
@@ -72,6 +73,9 @@ class ComicTextDetector(OfflineDetector):
             'file': '.',
         },
     }
+    
+    async def _merge_textlines(self, textlines: List[Quadrilateral], img_width: int, img_height: int, verbose: bool = False) -> List[TextBlock]:
+        return await dispatch_textline_merge(textlines, img_width, img_height, verbose)
 
     def __init__(self, *args, **kwargs):
         os.makedirs(self.model_dir, exist_ok=True)
