@@ -90,7 +90,7 @@ async def index_async(request):
 async def result_async(request):
     im = Image.open("result/" + request.match_info.get('taskid') + "/final.png")
     stream = BytesIO()
-    im.save(stream, "WebP")
+    im.save(stream, "WebP", quality=100)
     stream.seek(0)
     return web.Response(body=stream.read(), content_type='image/webp')
 
