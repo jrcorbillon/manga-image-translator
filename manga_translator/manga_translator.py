@@ -291,7 +291,7 @@ class MangaTranslator():
         ctx.img_inpainted = await self._run_inpainting(ctx)
 
         if self.verbose:
-            cv2.imwrite(self._result_path('inpainted.png'), cv2.cvtColor(ctx.img_inpainted, cv2.COLOR_RGB2BGR))
+            cv2.imwrite(self._result_path('inpainted.png', task_id=ctx.task_id), cv2.cvtColor(ctx.img_inpainted, cv2.COLOR_RGB2BGR))
         if ctx.run_until == 'inpainting':
             return ctx
 
@@ -628,7 +628,7 @@ class MangaTranslatorWS(MangaTranslator):
             cv2.imwrite(self._result_path('ws_inmask.png'), cv2.cvtColor(ctx.img_rgb, cv2.COLOR_RGB2BGRA) * render_mask)
         output = cv2.cvtColor(output, cv2.COLOR_RGB2RGBA) * render_mask
         if self.verbose:
-            cv2.imwrite(self._result_path('ws_output.png'), cv2.cvtColor(output, cv2.COLOR_RGBA2BGRA) * render_mask)
+            cv2.imwrite(self._result_path('ws_output.png', task_id=ctx.task_id), cv2.cvtColor(output, cv2.COLOR_RGBA2BGRA) * render_mask)
 
         return output
 
