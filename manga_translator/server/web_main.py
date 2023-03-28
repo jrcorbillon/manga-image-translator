@@ -39,7 +39,7 @@ VALID_DETECTORS = set(['default', 'ctd'])
 VALID_DIRECTIONS = set(['auto', 'h', 'v'])
 VALID_TRANSLATORS = set(['youdao', 'baidu', 'google', 'deepl', 'papago', 'offline', 'none', 'original'])
 
-MAX_ONGOING_TASKS = 2
+MAX_ONGOING_TASKS = 1
 MAX_IMAGE_SIZE_PX = 8000**2
 
 # Time to wait for web client to send a request to /task-state request
@@ -526,6 +526,7 @@ def generate_nonce():
     return crypto_utils.rand_bytes(16).hex()
 
 def start_translator_client_proc(host: str, port: int, nonce: str, params: dict):
+    global MAX_ONGOING_TASKS
     cmds = [
         sys.executable,
         '-m', 'manga_translator',
@@ -542,6 +543,9 @@ def start_translator_client_proc(host: str, port: int, nonce: str, params: dict)
         cmds.append('--ignore-errors')
     if params.get('verbose', False):
         cmds.append('--verbose')
+        
+        
+    MAX_ONGOING_TASKS = params.get('max_ongoing_tasks', 1)
 
     proc = subprocess.Popen(cmds, cwd=BASE_PATH)
     return proc

@@ -132,6 +132,7 @@ parser.add_argument('--font-path', default='', type=file_path, help='Path to fon
 parser.add_argument('--host', default='127.0.0.1', type=str, help='Used by web module to decide which host to attach to')
 parser.add_argument('--port', default=5003, type=int, help='Used by web module to decide which port to attach to')
 parser.add_argument('--nonce', default='', type=str, help='Used by web module as secret for securing internal web server communication')
+parser.add_argument('--max-ongoing-tasks', default=1, type=int, help='Used by web module to decide how many tasks can be processed at the same time')
 # parser.add_argument('--log-web', action='store_true', help='Used by web module to decide if web logs should be surfaced')
 parser.add_argument('--ws-url', default='ws://localhost:5000', type=str, help='Server URL for WebSocket mode')
 
