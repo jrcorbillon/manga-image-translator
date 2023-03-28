@@ -203,6 +203,10 @@ class MangaTranslator():
             ctx.translator = ctx.translator_chain
         else:
             ctx.translator = TranslatorChain(f'{ctx.translator}:{ctx.target_lang}')
+        if ctx.chatgpt_prompt_file:
+            from .translators.chatgpt import set_global_prompt
+            with open(ctx.chatgpt_prompt_file, 'r') as f:
+                set_global_prompt(f.read())
 
         if ctx.model_dir:
             ModelWrapper._MODEL_DIR = ctx.model_dir
@@ -246,9 +250,11 @@ class MangaTranslator():
         # consider adding automatic upscaling on certain kinds of small images.
         if ctx.upscale_ratio:
             await self._report_progress('upscaling', task_id=ctx.task_id)
-            ctx.input = await self._run_upscaling(ctx)
+            ctx.upscaled = await self._run_upscaling(ctx)
+        else:
+            ctx.upscaled = ctx.input
 
-        ctx.img_rgb, ctx.img_alpha = load_image(ctx.input)
+        ctx.img_rgb, ctx.img_alpha = load_image(ctx.upscaled)
 
         await self._report_progress('detection', task_id=ctx.task_id)
         ctx.text_regions, ctx.mask_raw, ctx.mask = await self._run_detection(ctx)
@@ -310,15 +316,12 @@ class MangaTranslator():
 
         ctx.img_rendered = await self._run_text_rendering(ctx)
 
+        await self._report_progress('finished', True)
+        ctx.result = dump_image(ctx.img_rendered, ctx.img_alpha)
+
         if ctx.downscale:
             await self._report_progress('downscaling', task_id=ctx.task_id)
-            if ctx.img_alpha:
-                # Add alpha channel to rgb
-                ctx.img_rendered = np.concatenate([ctx.img_rendered.astype(np.uint8), np.array(ctx.img_alpha).astype(np.uint8)[..., None]], axis=2)
-            ctx.img_rendered = cv2.resize(ctx.img_rendered, ctx.input.size, interpolation=cv2.INTER_LINEAR)
-
-        await self._report_progress('finished', True, task_id=ctx.task_id)
-        ctx.result = dump_image(ctx.img_rendered, ctx.img_alpha)
+            ctx.result = ctx.result.resize(ctx.input.size)
 
         return ctx
 
@@ -631,6 +634,7 @@ class MangaTranslatorWS(MangaTranslator):
 
 class MangaTranslatorAPI(MangaTranslator):
     def __init__(self, params: dict = None):
+        import nest_asyncio
         nest_asyncio.apply()
         super().__init__(params)
         self.host = params.get('host', '127.0.0.1')
