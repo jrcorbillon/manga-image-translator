@@ -111,8 +111,7 @@ async def handle_post(request):
     upscaler = 'esrgan'
     upscale_ratio = None
     translator_chain = None
-    detection_auto_orient = False
-    det_rearrange_max_batches = 4
+    det_auto_rotate = False
     inpainting_size = 2048
     unclip_ratio = 2.3
     box_threshold = 0.7
@@ -139,6 +138,61 @@ async def handle_post(request):
         upscaler = data['upscaler']
         if upscaler not in ['waifu2x', 'esrgan']:
             upscaler = None
+            
+    if 'upscale_ratio' in data:
+        upscale_ratio = int(data['upscale_ratio'])
+        if upscale_ratio < 1:
+            upscale_ratio = None
+    
+    if 'det_auto_rotate' in data:
+        det_auto_rotate = data['det_auto_rotate'] == 'true'
+        
+    if 'inpainting_size' in data:
+        inpainting_size = int(data['inpainting_size'])
+        if inpainting_size < 1:
+            inpainting_size = 2048
+    
+    if 'unclip_ratio' in data:
+        unclip_ratio = float(data['unclip_ratio'])
+        if unclip_ratio < 1:
+            unclip_ratio = 2.3
+            
+    if 'box_threshold' in data:
+        box_threshold = float(data['box_threshold'])
+        if box_threshold < 0:
+            box_threshold = 0.7
+            
+    if 'text_threshold' in data:
+        text_threshold = float(data['text_threshold'])
+        if text_threshold < 0:
+            text_threshold = 0.5
+            
+    if 'text_mag_ratio' in data:
+        text_mag_ratio = int(data['text_mag_ratio'])
+        if text_mag_ratio < 0:
+            text_mag_ratio = 1
+            
+    if 'font_size_offset' in data:
+        font_size_offset = int(data['font_size_offset'])
+        if font_size_offset < 0:
+            font_size_offset = 0
+            
+    if 'font_size_minimum' in data:
+        font_size_minimum = int(data['font_size_minimum'])
+        if font_size_minimum < 0:
+            font_size_minimum = -1
+            
+    if 'downscale' in data:
+        downscale = data['downscale'] == 'true'
+        
+    if 'manga2eng' in data:
+        manga2eng = data['manga2eng'] == 'true'
+    
+    if 'capitalize' in data:
+        capitalize = data['capitalize'] == 'true'
+        
+    if 'mtpe' in data:
+        mtpe = data['mtpe'] == 'true'
     
     if 'translator_chain' in data:
         translator_chain = data['translator_chain']
@@ -203,7 +257,7 @@ async def handle_post(request):
         return web.json_response({'status': 'error-img-corrupt'})
     
     return img, detection_size, selected_translator, target_language, detector, direction, ocr, inpainter,\
-            upscaler, upscale_ratio, translator_chain, detection_auto_orient, det_rearrange_max_batches, inpainting_size,\
+            upscaler, upscale_ratio, translator_chain, det_auto_rotate, inpainting_size,\
             unclip_ratio, box_threshold, text_threshold, text_mag_ratio, font_size_offset, font_size_minimum,\
             downscale, manga2eng, capitalize, mtpe
 
@@ -406,7 +460,7 @@ async def submit_async(request):
     x = await handle_post(request)
     if isinstance(x, tuple):
         img, size, selected_translator, target_language, detector, direction, ocr, inpainter,\
-        upscaler, upscale_ratio, translator_chain, detection_auto_orient, det_rearrange_max_batches, inpainting_size,\
+        upscaler, upscale_ratio, translator_chain, det_auto_rotate, inpainting_size,\
         unclip_ratio, box_threshold, text_threshold, text_mag_ratio, font_size_offset, font_size_minimum,\
         downscale, manga2eng, capitalize, mtpe = x
     else:
@@ -430,8 +484,7 @@ async def submit_async(request):
             'upscaler': upscaler,
             'upscale_ratio': upscale_ratio,
             'translator_chain': translator_chain,
-            'detection_auto_orient': detection_auto_orient,
-            'det_rearrange_max_batches': det_rearrange_max_batches,
+            'det_auto_rotate': det_auto_rotate,
             'inpainting_size': inpainting_size,
             'unclip_ratio': unclip_ratio,
             'box_threshold': box_threshold,
@@ -465,8 +518,7 @@ async def submit_async(request):
             'upscaler': upscaler,
             'upscale_ratio': upscale_ratio,
             'translator_chain': translator_chain,
-            'detection_auto_orient': detection_auto_orient,
-            'det_rearrange_max_batches': det_rearrange_max_batches,
+            'det_auto_rotate': det_auto_rotate,
             'inpainting_size': inpainting_size,
             'unclip_ratio': unclip_ratio,
             'box_threshold': box_threshold,
