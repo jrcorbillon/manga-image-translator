@@ -112,6 +112,8 @@ async def handle_post(request):
     upscale_ratio = None
     translator_chain = None
     det_auto_rotate = False
+    det_invert = False
+    det_gamma_correct = False
     inpainting_size = 2048
     unclip_ratio = 2.3
     box_threshold = 0.7
@@ -146,6 +148,12 @@ async def handle_post(request):
     
     if 'det_auto_rotate' in data:
         det_auto_rotate = data['det_auto_rotate'] == 'true'
+        
+    if 'det_invert' in data:
+        det_invert = data['det_invert'] == 'true'
+        
+    if 'det_gamma_correct' in data:
+        det_gamma_correct = data['det_gamma_correct'] == 'true'
         
     if 'inpainting_size' in data:
         inpainting_size = int(data['inpainting_size'])
@@ -259,7 +267,7 @@ async def handle_post(request):
     return img, detection_size, selected_translator, target_language, detector, direction, ocr, inpainter,\
             upscaler, upscale_ratio, translator_chain, det_auto_rotate, inpainting_size,\
             unclip_ratio, box_threshold, text_threshold, text_mag_ratio, font_size_offset, font_size_minimum,\
-            downscale, manga2eng, capitalize, mtpe
+            downscale, manga2eng, capitalize, mtpe, det_invert, det_gamma_correct
 
 
 @routes.post("/run")
@@ -462,7 +470,7 @@ async def submit_async(request):
         img, size, selected_translator, target_language, detector, direction, ocr, inpainter,\
         upscaler, upscale_ratio, translator_chain, det_auto_rotate, inpainting_size,\
         unclip_ratio, box_threshold, text_threshold, text_mag_ratio, font_size_offset, font_size_minimum,\
-        downscale, manga2eng, capitalize, mtpe = x
+        downscale, manga2eng, capitalize, mtpe, det_invert, det_gamma_correct = x
     else:
         return x
     task_id = f'{phash(img, hash_size = 16)}-{size}-{selected_translator}-{target_language}-{detector}-{direction}'
@@ -485,6 +493,8 @@ async def submit_async(request):
             'upscale_ratio': upscale_ratio,
             'translator_chain': translator_chain,
             'det_auto_rotate': det_auto_rotate,
+            'det_invert': det_invert,
+            'det_gamma_correct': det_gamma_correct,
             'inpainting_size': inpainting_size,
             'unclip_ratio': unclip_ratio,
             'box_threshold': box_threshold,
@@ -519,6 +529,8 @@ async def submit_async(request):
             'upscale_ratio': upscale_ratio,
             'translator_chain': translator_chain,
             'det_auto_rotate': det_auto_rotate,
+            'det_invert': det_invert,
+            'det_gamma_correct': det_gamma_correct,
             'inpainting_size': inpainting_size,
             'unclip_ratio': unclip_ratio,
             'box_threshold': box_threshold,
