@@ -5,7 +5,6 @@ import numpy as np
 import freetype
 import functools
 from typing import Tuple, Optional, List
-
 from ..utils import BASE_PATH, is_punctuation, is_whitespace
 
 CJK_H2V = {
@@ -155,9 +154,10 @@ class Glyph:
 
 @functools.lru_cache(maxsize = 1024, typed = True)
 def get_char_glyph(cdpt: str, font_size: int, direction: int) -> Glyph:
-    global FONT_SELECTION
-    for i, face in enumerate(FONT_SELECTION):
-        if face.get_char_index(cdpt) == 0 and i != len(FONT_SELECTION) - 1:
+    global FONT_SELECTION, FALLBACK_FONTS
+    for i, face_path in enumerate(FALLBACK_FONTS):
+        face = freetype.Face(face_path)
+        if face.get_char_index(cdpt) == 0 and i != len(FALLBACK_FONTS) - 1:
             continue
         if direction == 0:
             face.set_pixel_sizes(0, font_size)
@@ -168,9 +168,10 @@ def get_char_glyph(cdpt: str, font_size: int, direction: int) -> Glyph:
 
 #@functools.lru_cache(maxsize = 1024, typed = True)
 def get_char_border(cdpt: str, font_size: int, direction: int):
-    global FONT_SELECTION
-    for i, face in enumerate(FONT_SELECTION):
-        if face.get_char_index(cdpt) == 0 and i != len(FONT_SELECTION) - 1:
+    global FONT_SELECTION, FALLBACK_FONTS
+    for i, face_path in enumerate(FALLBACK_FONTS):
+        face = freetype.Face(face_path)
+        if face.get_char_index(cdpt) == 0 and i != len(FALLBACK_FONTS) - 1:
             continue
         if direction == 0:
             face.set_pixel_sizes(0, font_size)

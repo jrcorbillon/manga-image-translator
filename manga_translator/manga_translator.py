@@ -517,7 +517,7 @@ class MangaTranslatorWeb(MangaTranslator):
                 params[p] = current_value if current_value is not None else default_value
         if self.verbose:
             # Write log file
-            log_file = self._result_path('log.txt')
+            log_file = self._result_path('log.txt', task_id)
             add_file_logger(log_file)
 
         asyncio.run(self.translate_path(self._result_path('input.png', task_id), self._result_path('final.png', task_id), params=params, task_id=task_id))

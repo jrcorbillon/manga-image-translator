@@ -121,7 +121,7 @@ async def handle_post(request):
     text_mag_ratio = 1
     font_size_offset = 0
     font_size_minimum = -1
-    downscale = False
+    revert_upscaling = False
     manga2eng = False
     capitalize = False
     mtpe = False
@@ -190,8 +190,8 @@ async def handle_post(request):
         if font_size_minimum < 0:
             font_size_minimum = -1
             
-    if 'downscale' in data:
-        downscale = data['downscale'] == 'true'
+    if 'revert_upscaling' in data:
+        revert_upscaling = data['revert_upscaling'] == 'true'
         
     if 'manga2eng' in data:
         manga2eng = data['manga2eng'] == 'true'
@@ -267,7 +267,7 @@ async def handle_post(request):
     return img, detection_size, selected_translator, target_language, detector, direction, ocr, inpainter,\
             upscaler, upscale_ratio, translator_chain, det_auto_rotate, inpainting_size,\
             unclip_ratio, box_threshold, text_threshold, text_mag_ratio, font_size_offset, font_size_minimum,\
-            downscale, manga2eng, capitalize, mtpe, det_invert, det_gamma_correct
+            revert_upscaling, manga2eng, capitalize, mtpe, det_invert, det_gamma_correct
 
 
 @routes.post("/run")
@@ -470,7 +470,7 @@ async def submit_async(request):
         img, size, selected_translator, target_language, detector, direction, ocr, inpainter,\
         upscaler, upscale_ratio, translator_chain, det_auto_rotate, inpainting_size,\
         unclip_ratio, box_threshold, text_threshold, text_mag_ratio, font_size_offset, font_size_minimum,\
-        downscale, manga2eng, capitalize, mtpe, det_invert, det_gamma_correct = x
+        revert_upscaling, manga2eng, capitalize, mtpe, det_invert, det_gamma_correct = x
     else:
         return x
     task_id = f'{phash(img, hash_size = 16)}-{size}-{selected_translator}-{target_language}-{detector}-{direction}'
@@ -502,7 +502,7 @@ async def submit_async(request):
             'text_mag_ratio': text_mag_ratio,
             'font_size_offset': font_size_offset,
             'font_size_minimum': font_size_minimum,
-            'downscale': downscale,
+            'revert_upscaling': revert_upscaling,
             'manga2eng': manga2eng,
             'capitalize': capitalize,
             'mtpe': mtpe,
@@ -538,7 +538,7 @@ async def submit_async(request):
             'text_mag_ratio': text_mag_ratio,
             'font_size_offset': font_size_offset,
             'font_size_minimum': font_size_minimum,
-            'downscale': downscale,
+            'revert_upscaling': revert_upscaling,
             'manga2eng': manga2eng,
             'capitalize': capitalize,
             'mtpe': mtpe,
