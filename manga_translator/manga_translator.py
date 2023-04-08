@@ -526,6 +526,16 @@ class MangaTranslatorWeb(MangaTranslator):
             remove_file_logger(log_file)
         
         return
+    
+    def check_thread_alive(self, thread, task_id, params, translation_params, timeout):
+        if thread.is_alive():
+            logger.warning(f"Thread is still running after {timeout}s. Restarting.")
+            t = threading.Thread(target=self.task_thread, args=(task_id, params, translation_params))
+            t.start()
+            timer = threading.Timer(timeout, self.check_thread_alive, args=(t, task_id, params, translation_params))
+            timer.start()
+        else:
+            thread.timer.cancel()
 
     def get_task_thread(self, translation_params):
         while True:
@@ -539,6 +549,11 @@ class MangaTranslatorWeb(MangaTranslator):
 
             t = threading.Thread(target=self.task_thread, args=(task_id, params, translation_params))
             t.start()
+            
+            timeout = 60  # Set your desired timeout in seconds
+            timer = threading.Timer(timeout, self.check_thread_alive, args=(t, task_id, params, translation_params, timeout))
+            t.timer = timer
+            timer.start()
         
 
 
