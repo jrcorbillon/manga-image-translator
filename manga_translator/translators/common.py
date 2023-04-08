@@ -88,8 +88,9 @@ class MTPEAdapter():
         return new_translations
 
 class CommonTranslator(InfererModule):
-    # Translator has to support all languages listed in here. The language codes will be translated into
+    # Translator has to support all languages listed in here. The language codes will be resolved into
     # _LANGUAGE_CODE_MAP[lang_code] automatically if _LANGUAGE_CODE_MAP is a dict.
+    # If it is a list it will simply return the language code as is.
     _LANGUAGE_CODE_MAP = {}
 
     # The amount of repeats upon detecting an invalid translation.
@@ -166,16 +167,15 @@ class CommonTranslator(InfererModule):
             else:
                 translations = _translations
 
-            # Extend returned translations to have the same size as queries
+            # Extend returned translations list to have the same size as queries
             if len(translations) < len(queries):
                 translations.extend([''] * (len(queries) - len(translations)))
             elif len(translations) > len(queries):
                 translations = translations[:len(queries)]
 
+            # Repeat invalid translations with slightly modified queries
             if self._INVALID_REPEAT_COUNT <= 0:
                 break
-
-            # Repeat invalid translations with slightly modified queries
             n_unchecked_indices = []
             for j in unchecked_indices:
                 q, t = queries[j], translations[j]
@@ -236,7 +236,13 @@ class CommonTranslator(InfererModule):
         # '  ' -> ' '
         trans = re.sub(r'\s+', r' ', trans)
         # 'text .' -> 'text.'
-        trans = re.sub(r'\s+([.,;])', r'\1', trans)
+        trans = re.sub(r'(?<=[.,;!?\w])\s+([.,;!?])', r'\1', trans)
+        # 'text.text' -> 'text. text'
+        trans = re.sub(r'(?<![.,;!?])([.,;!?])(?=\w)', r'\1 ', trans)
+        # ' ! ! . . ' -> ' !!.. '
+        trans = re.sub(r'([.,;!?])\s+(?=[.,;!?]|$)', r'\1', trans)
+        # ' ... text' -> ' ...text'
+        trans = re.sub(r'(?<=\s\.\.\.)\s+(?=\w)', r'', trans)
 
         seq = repeating_sequence(trans.lower())
 
@@ -249,9 +255,6 @@ class CommonTranslator(InfererModule):
             for i in range(min(len(trans), len(query))):
                 nTrans += trans[i].upper() if query[i].isupper() else trans[i]
             trans = nTrans
-
-        # ' ! ! . . ' -> ' !!.. '
-        trans = re.sub(r'([.!?])\s+(?=[.!?]|$)', r'\1', trans)
 
         # words = text.split()
         # elements = list(set(words))

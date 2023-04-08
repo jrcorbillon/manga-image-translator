@@ -6,9 +6,9 @@ import time
 from .common import CommonTranslator, MissingAPIKeyException
 from .keys import OPENAI_API_KEY, OPENAI_HTTP_PROXY
 
-GPT3_PROMPT_TEMPLATE = 'Please help me to translate the following text from a manga to {to_lang}:\n'
+SIMPLE_PROMPT_TEMPLATE = 'Please help me to translate the following text from a manga to {to_lang}, if it\'s already in {to_lang} or looks like gibberish keep it as is:\n'
 
-GPT35_PROMPT_TEMPLATE = '''Please help me translate the following text from a manga into {to_lang}:
+COMPLEX_PROMPT_TEMPLATE = '''Please help me translate the following text from a manga into {to_lang}, if it\'s already in {to_lang} or looks like gibberish keep it as is:
 You must follow the format below for your reply.
 The content you need to translate will start with "Text" followed by a number. The text to be translated will be on the next line.
 For example:
@@ -31,13 +31,11 @@ Translation 1:
 Translation 2:
 讓你操心了，真不好意思！
 ----------Your reply ends-----------
-The instructions are over. Please translate the following content into {to_lang}:
+The instructions are over. Please translate the following content into {to_lang}, if it\'s already in {to_lang} or looks like gibberish keep it as is:
 '''
 
 PROMPT_OVERWRITE = None
-def set_global_prompt(prompt: str):
-    global PROMPT_OVERWRITE
-    PROMPT_OVERWRITE = prompt
+TEMPERATURE_OVERWRITE = 0.5
 
 class GPT3Translator(CommonTranslator):
     _LANGUAGE_CODE_MAP = {
@@ -64,7 +62,17 @@ class GPT3Translator(CommonTranslator):
     _INVALID_REPEAT_COUNT = 2 # repeat max. 2 times if invalid
     _REQUESTS_PER_MINUTE = 20
 
-    PROMPT_TEMPLATE = GPT3_PROMPT_TEMPLATE
+    _prompt_template = SIMPLE_PROMPT_TEMPLATE
+
+    @property
+    def prompt_template(self):
+        global PROMPT_OVERWRITE
+        return PROMPT_OVERWRITE or self._prompt_template
+
+    @property
+    def temperature(self):
+        global TEMPERATURE_OVERWRITE
+        return TEMPERATURE_OVERWRITE
 
     def __init__(self):
         super().__init__()
@@ -78,16 +86,12 @@ class GPT3Translator(CommonTranslator):
             }
             openai.proxy = proxies
 
-    @property
-    def prompt_template(self):
-        global PROMPT_OVERWRITE
-        return PROMPT_OVERWRITE or self.PROMPT_TEMPLATE
-
     async def _translate(self, from_lang, to_lang, queries):
         prompt = self.prompt_template.format(to_lang=to_lang)
         for i, query in enumerate(queries):
             prompt += f'\nText {i+1}:\n{query}\n'
         prompt += '\nTranslation 1:\n'
+        self.logger.debug(f'Temperature: {self.temperature}')
         self.logger.debug('-- GPT Prompt --\n' + prompt)
 
         request_task = asyncio.create_task(self._request_translation(prompt))
@@ -98,7 +102,7 @@ class GPT3Translator(CommonTranslator):
             if time.time() - started > 15:
                 if attempts >= 3:
                     raise Exception('API servers did not respond quickly enough.')
-                self.logger.info(f'Restarting request due to timeout. Attempt: {attempts+1}')
+                self.logger.warn(f'Restarting request due to timeout. Attempt: {attempts+1}')
                 request_task.cancel()
                 request_task = asyncio.create_task(self._request_translation(prompt))
                 started = time.time()
@@ -116,14 +120,14 @@ class GPT3Translator(CommonTranslator):
             model='text-davinci-003',
             prompt=prompt,
             max_tokens=1024,
-            temperature=1,
+            temperature=self.temperature,
         )
         response = completion.choices[0].text
         return response
 
 class GPT35TurboTranslator(GPT3Translator):
     _REQUESTS_PER_MINUTE = 200
-    PROMPT_TEMPLATE = GPT35_PROMPT_TEMPLATE
+    PROMPT_TEMPLATE = SIMPLE_PROMPT_TEMPLATE
 
     async def _request_translation(self, prompt: str) -> str:
         messages = [
@@ -133,7 +137,7 @@ class GPT35TurboTranslator(GPT3Translator):
         response = openai.ChatCompletion.create(
             model='gpt-3.5-turbo',
             messages=messages,
-            temperature=1,
+            temperature=self.temperature,
         )
         for choice in response.choices:
             if 'text' in choice:

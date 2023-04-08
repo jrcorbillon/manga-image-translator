@@ -12,6 +12,7 @@ import hashlib
 import re
 import einops
 import unicodedata
+import json
 
 try:
     functools.cached_property
@@ -137,6 +138,9 @@ def get_filename_from_url(url: str, default: str = '') -> str:
     if m:
         return m.group(1)
     return default
+
+def is_url(s: str):
+    return re.search(r'^http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+$', s) and True
 
 def download_url_with_progressbar(url: str, path: str):
     if os.path.basename(path) in ('.', '') or os.path.isdir(path):
@@ -775,6 +779,24 @@ def color_difference(rgb1: List, rgb2: List) -> float:
     diff[..., 0] *= 0.392
     diff = np.linalg.norm(diff, axis=2) 
     return diff.item()
+
+def rgb2hex(r,g,b):
+    return "#{:02x}{:02x}{:02x}".format(r,g,b)
+
+def hex2rgb(hexcode):
+    return tuple(map(ord,hexcode[1:].decode('hex')))
+
+def get_color_name(rgb: List[int]) -> str:
+        try:
+            # TODO: Maybe replace with offline alternative
+            url = f'https://www.thecolorapi.com/id?format=json&rgb={rgb[0]},{rgb[1]},{rgb[2]}'
+            response = requests.get(url)
+            if response.status_code == 200:
+                return json.loads(response.text)['name']['value']
+            else:
+                return 'Unnamed'
+        except Exception:
+            return 'Unnamed'
 
 def square_pad_resize(img: np.ndarray, tgt_size: int):
     h, w = img.shape[:2]

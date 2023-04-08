@@ -186,7 +186,13 @@ Then you can find the translation result in `result/` directory, e.g. using Ngin
 | none           |         | ✔️      | Translate to empty texts                              |
 | original       |         | ✔️      | Keep original texts                                   |
 
-- API Key: Whether the translator requires an API key to be set as environment variable.
+- API Key: Whether the translator requires an API key to be set as environment variable. 
+For this you can create a .env file containing your api keys like so:
+```
+OPENAI_API_KEY=sk-xxxxxxx...
+DEEPL_AUTH_KEY=xxxxxxxx...
+```
+
 - Offline: Whether the translator can be used offline.
 
 ### Language Code Reference
@@ -252,8 +258,9 @@ VIN: Vietnames
     --model-dir MODEL_DIR                    Model directory (by default ./models in project root)
     --retries RETRIES                        Retry attempts on encountered error. -1 means infinite
                                              times.
-    --downscale                              Downscales resulting image to original image size (Use
-                                             with --upscale-ratio).
+    --revert-upscaling                       Downscales the previously upscaled image after
+                                             translation back to original size (Use with --upscale-
+                                             ratio).
     --detection-size DETECTION_SIZE          Size of image used for detection
     --det-rotate                             Rotate the image for detection. Might improve
                                              detection.
@@ -268,24 +275,34 @@ VIN: Vietnames
     --unclip-ratio UNCLIP_RATIO              How much to extend text skeleton to form bounding box
     --box-threshold BOX_THRESHOLD            Threshold for bbox generation
     --text-threshold TEXT_THRESHOLD          Threshold for text detection
-    --text-mag-ratio TEXT_MAG_RATIO          Text rendering magnification ratio, larger means higher
-                                             quality
+    --font-size FONT_SIZE                    Use fixed font size for rendering
     --font-size-offset FONT_SIZE_OFFSET      Offset font size by a given amount, positive number
                                              increase font size and vice versa
-    --font-size-minimum FONT_SIZE_MINIMUM    Minimum output font size. Default is smallest-image-
-                                             side/200
+    --font-size-minimum FONT_SIZE_MINIMUM    Minimum output font size. Default is
+                                             image_sides_sum/150
     --force-horizontal                       Force text to be rendered horizontally
     --force-vertical                         Force text to be rendered vertically
     --align-left                             Align rendered text left
     --align-center                           Align rendered text centered
     --align-right                            Align rendered text right
+    --uppercase                              Change text to uppercase
+    --lowercase                              Change text to lowercase
     --manga2eng                              Render english text translated from manga with some
                                              additional typesetting. Ignores some other argument
-                                             options.
-    --capitalize                             Capitalize rendered text
+                                             options
+    --chatgpt-prompt-file CHATGPT_PROMPT_FILE
+                                             Prepends contents of the specified file to the chatgpt
+                                             prompt. Denote the target language with "{lang}"
+    --chatgpt-temperature CHATGPT_TEMPERATURE
+                                             The chatgpt temperature. More means it is more
+                                             creative.
     --mtpe                                   Turn on/off machine translation post editing (MTPE) on
                                              the command line (works only on linux right now)
-    --text-output-file TEXT_OUTPUT_FILE      File into which to save extracted text and translations
+    --save-text                              Save extracted text and translations into a text file.
+    --save-text-file SAVE_TEXT_FILE          Like --save-text but with a specified file path.
+    --prep-manual                            Prepare for manual typesetting by outputting blank,
+                                             inpainted images, plus copies of the original for
+                                             reference
     --font-path FONT_PATH                    Path to font file
     --host HOST                              Used by web module to decide which host to attach to
     --port PORT                              Used by web module to decide which port to attach to
