@@ -24,7 +24,7 @@ from googletrans.constants import (
     DEFAULT_USER_AGENT, LANGCODES, LANGUAGES, SPECIAL_CASES,
     DEFAULT_RAISE_EXCEPTION, DUMMY_DATA
 )
-from googletrans.models import Translated, Detected, TranslatedPart
+from googletrans.models import Translated, Detected
 
 from .common import CommonTranslator
 from .keys import OPENAI_HTTP_PROXY
@@ -102,7 +102,7 @@ class GoogleTranslator(CommonTranslator):
 
     def __init__(self, service_urls=DEFAULT_CLIENT_SERVICE_URLS, user_agent=DEFAULT_USER_AGENT,
                  raise_exception=DEFAULT_RAISE_EXCEPTION,
-                 proxies: typing.Dict[str, httpcore.AsyncHTTPTransport] = None,
+                 proxies = None,
                  timeout: Timeout = None,
                  http2=True,
                  use_fallback=False):

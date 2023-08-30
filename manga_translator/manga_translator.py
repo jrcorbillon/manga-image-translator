@@ -13,10 +13,12 @@ import torch
 import time
 import logging
 import numpy as np
+import gradio as gr
 from PIL import Image
 from typing import List, Tuple
 from aiohttp import web
 from marshmallow import Schema, fields, ValidationError
+from zipfile import BadZipFile
 
 from manga_translator.utils.threading import Throttler
 
@@ -42,7 +44,7 @@ from .utils import (
 )
 
 from .detection import DETECTORS, dispatch as dispatch_detection, prepare as prepare_detection
-from .upscaling import dispatch as dispatch_upscaling, prepare as prepare_upscaling
+from .upscaling import UPSCALERS, dispatch as dispatch_upscaling, prepare as prepare_upscaling
 from .ocr import OCRS, dispatch as dispatch_ocr, prepare as prepare_ocr
 from .textline_merge import dispatch as dispatch_textline_merge
 from .mask_refinement import dispatch as dispatch_mask_refinement
@@ -55,7 +57,7 @@ from .translators import (
     dispatch as dispatch_translation,
     prepare as prepare_translation,
 )
-from .colorization import dispatch as dispatch_colorization, prepare as prepare_colorization
+from .colorization import COLORIZERS, dispatch as dispatch_colorization, prepare as prepare_colorization
 from .rendering import dispatch as dispatch_rendering, dispatch_eng_render
 from .save import save_result
 
@@ -387,6 +389,7 @@ class MangaTranslator():
         return ctx
 
     async def _run_colorizer(self, ctx: Context):
+        print("[device] ", self.device)
         return await dispatch_colorization(ctx.colorizer, device=self.device, image=ctx.input, **ctx)
 
     async def _run_upscaling(self, ctx: Context):
@@ -1106,3 +1109,340 @@ class MangaTranslatorAPI(MangaTranslator):
         url = fields.Raw(required=False)
         fingerprint = fields.Raw(required=False)
         clientUuid = fields.Raw(required=False)
+
+
+class MangaTranslatorWeb2(MangaTranslator):
+    def __init__(self, params: dict = None):
+        super().__init__(params)
+        self.translator = None
+        self.previous_results = []
+        self.subtitle_index = 0
+        self.host = params.get('host', '127.0.0.1')
+       
+
+    async def run_text_translation(self, segments, translator_params):
+        translator = TranslatorChain(f'{translator_params["translator"]}:{translator_params["target_lang"]}')
+        return await dispatch_translation(translator, [segment["text"] for segment in segments["segments"]], False, translator_params["cuda"])
+
+    async def process_zip_file(self, zip_file, translator_params=None, whisper_params=None, progress=gr.Progress()):
+        # print filename of zip_file
+        self.fixBadZipfile(zip_file.name)
+        zip_file_name = os.path.splitext(os.path.basename(zip_file.name))[0].strip()
+        output_text = ""
+        output_files = []
+        try:
+            with zipfile.ZipFile(zip_file.name, "r") as zf:
+                files = zf.infolist()
+                count = 0
+                for file_info in progress.tqdm(zf.infolist(), desc="Processing Files"):
+                    count += 1
+                    # progress(count / len(files), desc="Processing " + file_info.filename) # why no work??
+                    file_extension = os.path.splitext(file_info.filename)[1].lower()[1:]
+                    
+                    if file_extension in ["jpg", "jpeg", "png", "bmp", "gif", "webp"]:
+                        print("[process_zip_file] image file: " + file_info.filename.split('/')[-1])
+                        dir_name = os.path.splitext(os.path.basename(zip_file.name))[0].strip()
+                        temp_file_name = os.path.join(BASE_PATH, 'result', dir_name, file_info.filename.split('/')[-1])
+                        os.makedirs(os.path.dirname(temp_file_name), exist_ok=True)
+                        with zf.open(file_info.filename) as file:
+                            with open(temp_file_name, "wb") as temp_file:
+                                temp_file.write(file.read())
+
+                        out_file_name = await self.process_image(temp_file, translator_params)
+                        # check if output file path exist
+                        if not os.path.exists(out_file_name):
+                            # remove "-translated" from filename
+                            out_file_name = out_file_name.replace("-translated", "")
+                        output_files.append({"name":out_file_name, "data": None})
+                    else:
+                        raise ValueError("Unsupported file format. Please upload a zip file containing text files in .txt format.")
+            
+            # Create a new zip file
+            # create path for zip file
+            os.makedirs(os.path.dirname(f'result/{zip_file_name}/{zip_file_name}-translated.zip'), exist_ok=True)
+            with zipfile.ZipFile(f'result/{zip_file_name}/{zip_file_name}-translated.zip', 'w') as zip_file:
+                # Add the translated text file to the zip file
+                for file in progress.tqdm(output_files, desc="Creating Zip File"):
+                    if file["data"] is not None:
+                        zip_file.writestr(file["name"], file["data"])
+                    else:
+                        arcname = os.path.basename(file["name"])
+                        zip_file.write(file["name"], arcname)
+            return output_text, f'result/{zip_file_name}/{zip_file_name}-translated.zip'
+        
+        except BadZipFile:
+            raise ValueError("The provided file is not a valid zip file. Please upload a valid zip file containing text files.")
+        
+        
+    async def process_image(self, image_file=None, params={}):
+        if image_file:
+            print("Processing image file")
+            dir_name = os.path.split(os.path.split(image_file.name)[0])[1].strip()
+            file_name = os.path.splitext(os.path.split(image_file.name)[1])[0] + "-translated.jpg"
+            dest = os.path.join(BASE_PATH, 'result', dir_name, file_name)
+            if os.path.exists(dest):
+                os.remove(dest)
+
+            # create directory if not exist
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            print("dest: " + dest)
+
+            # translator_params = {
+            #     'translator': params.get('translator', 'offline'),
+            #     'target_lang': params.get('target_lang', 'ENG'),
+            #     'image_detector': params.get('image_detector', 'default'),
+            #     'image_inpainter': params.get('image_inpainter', 'default'),
+            #     'image_upscaler': params.get('image_upscaler', 'esrgan'),
+            #     'image_upscale_ratio': None if params.get('image_upscale_ratio', 0) == 0 else params.get('image_upscale_ratio'),
+            #     'image_detection_size': params.get('image_detection_size', 2048),
+            #     'format': 'jpg',
+            #     'save_quality': 85
+            # }
+            if params.get('device') == "cuda":
+                params['use_cuda'] = True
+            elif params.get('device') == "cuda_limited":
+                params['use_cuda_limited'] = True
+                params['device'] = "cpu"
+                
+            print("[process_image] params: " + str(params))
+            
+            translator = MangaTranslator(params)
+            await translator.translate_path(path=image_file.name, dest=dest, params=params)
+            return dest
+        else:
+            raise ValueError("Unsupported file format. Please upload an image file.")
+        
+    def process_image_sync(self, image_file=None, translator="offline", target_lang="ENG",
+                           device="cpu", image_detector="default", image_inpainter="default",
+                           image_upscaler="esrgan", image_upscale_ratio=0, image_detection_size=2048,
+                           image_colorizer=None, misc_attempts=0, misc_skip_errors=False,
+                           image_revert_upscaling=False, image_det_rotate=False, image_det_auto_rotate=False,
+                           image_det_invert=False, image_det_gamma_correct=False, image_unclip_ratio=2.3,
+                           image_box_threshold=0.7, image_text_threshold=0.5, image_inpainting_size=2048,
+                           image_colorization_size=576, image_denoise_sigma=30, image_save_quality=85,
+                           image_save_file_type="jpg", text_min_text_length=0, text_font_size=None,
+                           text_font_size_offset=0, text_font_size_minimum=-1
+                           ):
+        params = {
+            'translator': translator,
+            'target_lang': target_lang,
+            'device': device,
+            'detector': image_detector,
+            'inpainter': image_inpainter,
+            'upscaler': image_upscaler,
+            'upscale_ratio': image_upscale_ratio,
+            'detection_size': image_detection_size,
+            'colorizer': image_colorizer,
+            'attempts': misc_attempts,
+            'skip_errors': misc_skip_errors,
+            'revert_upscaling': image_revert_upscaling,
+            'det_rotate': image_det_rotate,
+            'det_auto_rotate': image_det_auto_rotate,
+            'det_invert': image_det_invert,
+            'det_gamma_correct': image_det_gamma_correct,
+            'unclip_ratio': image_unclip_ratio,
+            'box_threshold': image_box_threshold,
+            'text_threshold': image_text_threshold,
+            'inpainting_size': image_inpainting_size,
+            'colorization_size': image_colorization_size,
+            'denoise_sigma': image_denoise_sigma,
+            'save_quality': image_save_quality,
+            'format': image_save_file_type,
+            'min_text_length': text_min_text_length,
+            'font_size': text_font_size,
+            'font_size_offset': text_font_size_offset,
+            'font_size_minimum': text_font_size_minimum
+        }
+        result = asyncio.run(self.process_image(image_file, params))
+        return result
+        
+    def process_image_zip(self, image_zip_file=None, translator="offline", target_lang="ENG",
+                          device="cpu", image_detector="default", image_inpainter="default",
+                          image_upscaler="esrgan", image_upscale_ratio=0, image_detection_size=2048, 
+                          image_colorizer=None, misc_attempts=0, misc_skip_errors=False,
+                          image_revert_upscaling=False, image_det_rotate=False, image_det_auto_rotate=False,
+                          image_det_invert=False, image_det_gamma_correct=False, image_unclip_ratio=2.3,
+                          image_box_threshold=0.7, image_text_threshold=0.5, image_inpainting_size=2048,
+                          image_colorization_size=576, image_denoise_sigma=30, image_save_quality=85,
+                          image_save_file_type="jpg", text_min_text_length=0, text_font_size=None,
+                          text_font_size_offset=0, text_font_size_minimum=-1,
+                          progress=gr.Progress()):
+        if image_zip_file:
+            print("Processing image zip file")
+            params = {
+                'translator': translator,
+                'target_lang': target_lang,
+                'device': device,
+                'detector': image_detector,
+                'inpainter': image_inpainter,
+                'upscaler': image_upscaler,
+                'upscale_ratio': image_upscale_ratio,
+                'detection_size': image_detection_size,
+                'colorizer': image_colorizer,
+                'attempts': misc_attempts,
+                'skip_errors': misc_skip_errors,
+                'revert_upscaling': image_revert_upscaling,
+                'det_rotate': image_det_rotate,
+                'det_auto_rotate': image_det_auto_rotate,
+                'det_invert': image_det_invert,
+                'det_gamma_correct': image_det_gamma_correct,
+                'unclip_ratio': image_unclip_ratio,
+                'box_threshold': image_box_threshold,
+                'text_threshold': image_text_threshold,
+                'inpainting_size': image_inpainting_size,
+                'colorization_size': image_colorization_size,
+                'denoise_sigma': image_denoise_sigma,
+                'save_quality': image_save_quality,
+                'format': image_save_file_type,
+                'min_text_length': text_min_text_length,
+                'font_size': text_font_size,
+                'font_size_offset': text_font_size_offset,
+                'font_size_minimum': text_font_size_minimum
+            }
+            # text, dest = await self.process_zip_file(image_zip_file, translator_params=params, progress=progress)
+            # return dest
+            task = self.process_zip_file(image_zip_file, translator_params=params, progress=progress)
+            text, dest = asyncio.run(task)
+            print("text: " + str(text) + ", dest: " + str(dest))
+            return dest
+        else:
+            raise ValueError("Unsupported file format. Please upload an image file.")
+        
+    def fixBadZipfile(self, zipFile):  
+        f = open(zipFile, 'r+b')  
+        data = f.read()  
+        pos = data.find(b'\x50\x4b\x05\x06') # End of central directory signature  
+        if (pos > 0):  
+            print("Trancating file at location " + str(pos + 22)+ ".")  
+            f.seek(pos + 22)   # size of 'ZIP end of central directory record' 
+            f.truncate()  
+            f.close()  
+        else:  
+            # raise error, file is truncated
+            raise ValueError("The provided file is not a valid zip file. Please upload a valid zip file containing text files.")
+        
+    async def start(self):
+        with gr.Blocks() as interface:
+            gr.Markdown("Manga Translation")
+            with gr.Tab("Single"):
+                with gr.Row():
+                    with gr.Column(min_width=600):
+                        image_file_input = gr.inputs.File(label="Upload Image File")
+                        image_submit_button = gr.Button("Submit")
+                    with gr.Column(min_width=600):
+                        image_output_file = gr.Image(label="Download Translated Image File")
+            with gr.Tab("Batch/ZIP"):
+                with gr.Row():
+                    with gr.Column(min_width=600):
+                        image_zip_file_input = gr.inputs.File(type="file", label="Batch Image(Zip)")
+                        image_zip_submit_button = gr.Button("Submit")
+                    with gr.Column(min_width=600, scale=2):
+                        image_zip_output_file = gr.outputs.File(label="Download Zip File")
+                        
+            with gr.Column():
+                gr.Markdown("Translator Settings")
+                with gr.Row():
+                    translator_translator = gr.inputs.Dropdown(list(TRANSLATORS.keys()), label="Translator", default="offline")
+                    translator_target_lang = gr.inputs.Dropdown(list(VALID_LANGUAGES.keys()), label="Target Language", default="ENG")
+                    translator_device = gr.inputs.Radio(["cpu", "cuda", "cuda_limited"], label="Device", default="cpu")
+                        
+            with gr.Column():
+                gr.Markdown("Image Settings")
+                with gr.Row():
+                    image_detector = gr.inputs.Dropdown(list(DETECTORS.keys()), label="Image Detector", default="default")
+                    image_inpainter = gr.inputs.Dropdown(list(INPAINTERS.keys()), label="Image Inpainter", default="default")
+                    image_upscaler = gr.inputs.Dropdown(list(UPSCALERS.keys()), label="Image Upscaler", default="esrgan")
+                    image_upscale_ratio = gr.inputs.Slider(minimum=0, maximum=32, step=1, label="Image Upscale Ratio", default=0)
+                    image_detection_size = gr.inputs.Slider(minimum=0, maximum=2560, step=1, label="Image Detection Size", default=2048)
+                    image_revert_upscaling = gr.inputs.Checkbox(label="Revert Upscaling", default=False)
+                with gr.Row():
+                    image_colorizer = gr.inputs.Dropdown(list(COLORIZERS.keys()), label="Image Colorizer", default=None, optional=True)
+                    image_det_rotate = gr.inputs.Checkbox(label="Rotate", default=False)
+                    image_det_auto_rotate = gr.inputs.Checkbox(label="Auto Rotate", default=False)
+                    image_det_invert = gr.inputs.Checkbox(label="Invert", default=False)
+                    image_det_gamma_correct = gr.inputs.Checkbox(label="Gamma Correct", default=False)
+                with gr.Row():
+                    image_unclip_ratio = gr.inputs.Slider(minimum=0.1, maximum=20, step=0.01, label="Unclip Ratio", default=2.3)
+                    image_box_threshold = gr.inputs.Slider(minimum=0.1, maximum=5, step=0.01, label="Box Threshold", default=0.7)
+                    image_text_threshold = gr.inputs.Slider(minimum=0.1, maximum=5, step=0.01, label="Text Threshold", default=0.5)
+                    image_inpainting_size = gr.inputs.Slider(minimum=0, maximum=4096, step=1, label="Inpainting Size", default=2048)
+                    image_colorization_size = gr.inputs.Slider(minimum=0, maximum=4096, step=1, label="Colorization Size", default=576)
+                    
+                with gr.Row():
+                    image_denoise_sigma = gr.inputs.Slider(minimum=0, maximum=100, step=0.1, label="Denoise Sigma", default=30)
+                    image_save_quality = gr.inputs.Slider(minimum=0, maximum=100, step=1, label="Save Quality", default=85)
+                    image_save_file_type = gr.inputs.Dropdown(["jpg", "png", "webp"], label="Save File Type", default="jpg")
+                    
+            with gr.Column():
+                gr.Markdown("Text Settings")
+                with gr.Row():
+                    text_min_text_length = gr.inputs.Slider(minimum=0, maximum=100, step=1, label="Min Text Length", default=0)
+                    text_font_size = gr.inputs.Slider(minimum=0, maximum=100, step=1, label="Font Size", default=None)
+                    text_font_size_offset = gr.inputs.Slider(minimum=0, maximum=100, step=1, label="Font Size Offset", default=0)
+                    text_font_size_minimum = gr.inputs.Slider(minimum=-1, maximum=100, step=1, label="Font Size Minimum", default=-1)
+                    text_force_render_orientation = gr.inputs.Dropdown(["auto", "horizontal", "vertical"], label="Force Render Text Orientation", default="auto")
+                with gr.Row():
+                    text_alignment = gr.inputs.Dropdown(["auto", "left", "center", "right"], label="Text Alignment", default="auto")
+                    text_case = gr.inputs.Dropdown(["sentence", "uppercase", "lowercase"], label="Text Case", default="sentence")
+                    text_manga2eng = gr.inputs.Checkbox(label="Manga2Eng", default=False)
+                    text_filter_text = gr.inputs.Textbox(label="Filter Text", default=None)
+                    text_gimp_font = gr.inputs.Textbox(label="GIMP Font", default="Sans-serif")
+                with gr.Row():
+                    text_font_path = gr.inputs.File(label="Font Path", optional=True)
+                    
+                    
+                    
+            with gr.Column():
+                gr.Markdown("Misc")
+                with gr.Row():
+                    misc_attempts = gr.inputs.Slider(minimum=0, maximum=10, step=1, label="Attempts", default=0)
+                    misc_skip_error = gr.inputs.Checkbox(label="Skip Error", default=False)
+                    
+            default_params = [
+                translator_translator,
+                translator_target_lang,
+                translator_device,
+                image_detector,
+                image_inpainter,
+                image_upscaler,
+                image_upscale_ratio,
+                image_detection_size,
+                image_colorizer,
+                misc_attempts,
+                misc_skip_error,
+                image_revert_upscaling,
+                image_det_rotate,
+                image_det_auto_rotate,
+                image_det_invert,
+                image_det_gamma_correct,
+                image_unclip_ratio,
+                image_box_threshold,
+                image_text_threshold,
+                image_inpainting_size,
+                image_colorization_size,
+                image_denoise_sigma,
+                image_save_quality,
+                image_save_file_type,
+                text_min_text_length,
+                text_font_size,
+                text_font_size_offset,
+                text_font_size_minimum,
+            ]
+            
+            image_submit = [
+                image_file_input
+            ]
+            image_submit.extend(default_params)
+                        
+            image_zip_submit = [
+                image_zip_file_input,
+            ]
+            image_zip_submit.extend(default_params)
+            
+        
+            image_submit_button.click(self.process_image_sync, inputs=image_submit,
+                outputs=[image_output_file])
+            image_zip_submit_button.click(self.process_image_zip, inputs=image_zip_submit,
+                outputs=[image_zip_output_file])
+        
+        interface.queue(concurrency_count=2).launch(server_name=self.host, debug=True)
