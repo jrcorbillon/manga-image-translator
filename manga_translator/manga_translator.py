@@ -1250,7 +1250,7 @@ class MangaTranslatorWeb2(MangaTranslator):
             'save_quality': image_save_quality,
             'format': image_save_file_type,
             'min_text_length': text_min_text_length,
-            'font_size': text_font_size,
+            'font_size': text_font_size if text_font_size > 0 else None,
             'font_size_offset': text_font_size_offset,
             'font_size_minimum': text_font_size_minimum
         }
@@ -1296,7 +1296,7 @@ class MangaTranslatorWeb2(MangaTranslator):
                 'save_quality': image_save_quality,
                 'format': image_save_file_type,
                 'min_text_length': text_min_text_length,
-                'font_size': text_font_size,
+                'font_size': text_font_size if text_font_size > 0 else None,
                 'font_size_offset': text_font_size_offset,
                 'font_size_minimum': text_font_size_minimum
             }
