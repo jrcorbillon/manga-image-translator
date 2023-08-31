@@ -1118,6 +1118,7 @@ class MangaTranslatorWeb2(MangaTranslator):
         self.previous_results = []
         self.subtitle_index = 0
         self.host = params.get('host', '127.0.0.1')
+        self.share = params.get('share', False)
        
 
     async def run_text_translation(self, segments, translator_params):
@@ -1445,4 +1446,4 @@ class MangaTranslatorWeb2(MangaTranslator):
             image_zip_submit_button.click(self.process_image_zip, inputs=image_zip_submit,
                 outputs=[image_zip_output_file])
         
-        interface.queue(concurrency_count=2).launch(server_name=self.host, debug=True)
+        interface.queue(concurrency_count=2).launch(server_name=self.host, debug=True, share=self.share)
