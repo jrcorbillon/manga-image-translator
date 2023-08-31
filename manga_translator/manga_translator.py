@@ -14,6 +14,7 @@ import time
 import logging
 import numpy as np
 import gradio as gr
+import zipfile
 from PIL import Image
 from typing import List, Tuple
 from aiohttp import web
