@@ -390,7 +390,6 @@ class MangaTranslator():
         return ctx
 
     async def _run_colorizer(self, ctx: Context):
-        print("[device] ", self.device)
         return await dispatch_colorization(ctx.colorizer, device=self.device, image=ctx.input, **ctx)
 
     async def _run_upscaling(self, ctx: Context):
@@ -1116,16 +1115,9 @@ class MangaTranslatorWeb2(MangaTranslator):
     def __init__(self, params: dict = None):
         super().__init__(params)
         self.translator = None
-        self.previous_results = []
-        self.subtitle_index = 0
         self.host = params.get('host', '127.0.0.1')
         self.share = params.get('share', False)
        
-
-    async def run_text_translation(self, segments, translator_params):
-        translator = TranslatorChain(f'{translator_params["translator"]}:{translator_params["target_lang"]}')
-        return await dispatch_translation(translator, [segment["text"] for segment in segments["segments"]], False, translator_params["cuda"])
-
     async def process_zip_file(self, zip_file, translator_params=None, whisper_params=None, progress=gr.Progress()):
         # print filename of zip_file
         self.fixBadZipfile(zip_file.name)
@@ -1134,11 +1126,7 @@ class MangaTranslatorWeb2(MangaTranslator):
         output_files = []
         try:
             with zipfile.ZipFile(zip_file.name, "r") as zf:
-                files = zf.infolist()
-                count = 0
-                for file_info in progress.tqdm(zf.infolist(), desc="Processing Files"):
-                    count += 1
-                    # progress(count / len(files), desc="Processing " + file_info.filename) # why no work??
+                for file_info in progress.tqdm(zf.infolist(), desc="Processing Files", unit="files"):
                     file_extension = os.path.splitext(file_info.filename)[1].lower()[1:]
                     
                     if file_extension in ["jpg", "jpeg", "png", "bmp", "gif", "webp"]:
@@ -1161,55 +1149,46 @@ class MangaTranslatorWeb2(MangaTranslator):
             
             # Create a new zip file
             # create path for zip file
-            os.makedirs(os.path.dirname(f'result/{zip_file_name}/{zip_file_name}-translated.zip'), exist_ok=True)
-            with zipfile.ZipFile(f'result/{zip_file_name}/{zip_file_name}-translated.zip', 'w') as zip_file:
+            os.makedirs(os.path.join(BASE_PATH, 'result', dir_name), exist_ok=True)
+            with zipfile.ZipFile(os.path.join(BASE_PATH, 'result', dir_name, f'{zip_file_name}-translated.zip'), 'w') as zip_file:
                 # Add the translated text file to the zip file
-                for file in progress.tqdm(output_files, desc="Creating Zip File"):
+                for file in progress.tqdm(output_files, desc="Creating Zip File", unit="files"):
                     if file["data"] is not None:
                         zip_file.writestr(file["name"], file["data"])
                     else:
                         arcname = os.path.basename(file["name"])
                         zip_file.write(file["name"], arcname)
-            return output_text, f'result/{zip_file_name}/{zip_file_name}-translated.zip'
+            return output_text, os.path.join(BASE_PATH, 'result', dir_name, f'{zip_file_name}-translated.zip')
         
         except BadZipFile:
             raise ValueError("The provided file is not a valid zip file. Please upload a valid zip file containing text files.")
         
         
     async def process_image(self, image_file=None, params={}):
+        params = params.copy()
         if image_file:
-            print("Processing image file")
             dir_name = os.path.split(os.path.split(image_file.name)[0])[1].strip()
-            file_name = os.path.splitext(os.path.split(image_file.name)[1])[0] + "-translated.jpg"
+            file_name = os.path.splitext(os.path.split(image_file.name)[1])[0] + "-translated." + params.get('format', 'jpg')
             dest = os.path.join(BASE_PATH, 'result', dir_name, file_name)
             if os.path.exists(dest):
                 os.remove(dest)
 
             # create directory if not exist
             os.makedirs(os.path.dirname(dest), exist_ok=True)
-            print("dest: " + dest)
 
-            # translator_params = {
-            #     'translator': params.get('translator', 'offline'),
-            #     'target_lang': params.get('target_lang', 'ENG'),
-            #     'image_detector': params.get('image_detector', 'default'),
-            #     'image_inpainter': params.get('image_inpainter', 'default'),
-            #     'image_upscaler': params.get('image_upscaler', 'esrgan'),
-            #     'image_upscale_ratio': None if params.get('image_upscale_ratio', 0) == 0 else params.get('image_upscale_ratio'),
-            #     'image_detection_size': params.get('image_detection_size', 2048),
-            #     'format': 'jpg',
-            #     'save_quality': 85
-            # }
-            if params.get('device') == "cuda":
-                params['use_cuda'] = True
-            elif params.get('device') == "cuda_limited":
+            if params.get('device') == "cuda_limited":
                 params['use_cuda_limited'] = True
-                params['device'] = "cpu"
                 
-            print("[process_image] params: " + str(params))
+            self.device = 'cuda' if params.get('device', False) else 'cpu'
+            self._cuda_limited_memory = params.get('use_cuda_limited', False)
+            if self._cuda_limited_memory and not self.using_cuda:
+                self.device = 'cuda'
+            if self.using_cuda and not torch.cuda.is_available():
+                raise Exception('CUDA compatible device could not be found whilst --use-cuda args was set...')
+
+            del params['device']
             
-            translator = MangaTranslator(params)
-            await translator.translate_path(path=image_file.name, dest=dest, params=params)
+            await self.translate_path(path=image_file.name, dest=dest, params=params)
             return dest
         else:
             raise ValueError("Unsupported file format. Please upload an image file.")
@@ -1217,14 +1196,18 @@ class MangaTranslatorWeb2(MangaTranslator):
     def process_image_sync(self, image_file=None, translator="offline", target_lang="ENG",
                            device="cpu", image_detector="default", image_inpainter="default",
                            image_upscaler="esrgan", image_upscale_ratio=0, image_detection_size=2048,
-                           image_colorizer=None, misc_attempts=0, misc_skip_errors=False,
+                           image_colorizer="None", misc_attempts=0, misc_skip_errors=False,
                            image_revert_upscaling=False, image_det_rotate=False, image_det_auto_rotate=False,
                            image_det_invert=False, image_det_gamma_correct=False, image_unclip_ratio=2.3,
                            image_box_threshold=0.7, image_text_threshold=0.5, image_inpainting_size=2048,
                            image_colorization_size=576, image_denoise_sigma=30, image_save_quality=85,
                            image_save_file_type="jpg", text_min_text_length=0, text_font_size=None,
-                           text_font_size_offset=0, text_font_size_minimum=-1
+                           text_font_size_offset=0, text_font_size_minimum=-1, text_force_render_orientation="auto",
+                           text_alignment="auto", text_case="sentence", text_manga2eng=False,
+                           text_filter_text=None, text_gimp_font="Sans-serif", text_font_path=None,
+                           misc_overwrite=False
                            ):
+        
         params = {
             'translator': translator,
             'target_lang': target_lang,
@@ -1234,7 +1217,7 @@ class MangaTranslatorWeb2(MangaTranslator):
             'upscaler': image_upscaler,
             'upscale_ratio': image_upscale_ratio,
             'detection_size': image_detection_size,
-            'colorizer': image_colorizer,
+            'colorizer': image_colorizer if image_colorizer != "None" else None,
             'attempts': misc_attempts,
             'skip_errors': misc_skip_errors,
             'revert_upscaling': image_revert_upscaling,
@@ -1253,24 +1236,60 @@ class MangaTranslatorWeb2(MangaTranslator):
             'min_text_length': text_min_text_length,
             'font_size': text_font_size if text_font_size > 0 else None,
             'font_size_offset': text_font_size_offset,
-            'font_size_minimum': text_font_size_minimum
+            'font_size_minimum': text_font_size_minimum,
+            'manga2eng': text_manga2eng,
+            'filter_text': text_filter_text,
+            'gimp_font': text_gimp_font,
+            'font_path': text_font_path,
+            'overwrite': misc_overwrite
         }
-        result = asyncio.run(self.process_image(image_file, params))
-        return result
+        
+        if (text_force_render_orientation == 'horizontal'):
+            params['force_horizontal'] = True
+        elif (text_force_render_orientation == 'vertical'):
+            params['force_vertical'] = True
+            
+        if (text_alignment == 'left'):
+            params['align_left'] = True
+        elif (text_alignment == 'right'):
+            params['align_right'] = True
+        elif (text_alignment == 'center'):
+            params['align_center'] = True
+            
+        if (text_case == 'uppercase'):
+            params['uppercase'] = True
+            print("upper: " + str(params['uppercase']))
+        elif (text_case == 'lowercase'):
+            params['lowercase'] = True
+       
+        try:
+            startTime = time.time()
+            result = asyncio.run(self.process_image(image_file, params))
+            endTime = time.time()
+            totalTime = round(endTime - startTime, 2)
+            status = "Successfully translated image.\n" + "Time taken: " + str(totalTime) + " seconds" 
+        except Exception as e:
+            result = None
+            status = "Failed to translate image:\n" + str(e)
+        
+        return result, status
         
     def process_image_zip(self, image_zip_file=None, translator="offline", target_lang="ENG",
                           device="cpu", image_detector="default", image_inpainter="default",
                           image_upscaler="esrgan", image_upscale_ratio=0, image_detection_size=2048, 
-                          image_colorizer=None, misc_attempts=0, misc_skip_errors=False,
+                          image_colorizer="None", misc_attempts=0, misc_skip_errors=False,
                           image_revert_upscaling=False, image_det_rotate=False, image_det_auto_rotate=False,
                           image_det_invert=False, image_det_gamma_correct=False, image_unclip_ratio=2.3,
                           image_box_threshold=0.7, image_text_threshold=0.5, image_inpainting_size=2048,
                           image_colorization_size=576, image_denoise_sigma=30, image_save_quality=85,
                           image_save_file_type="jpg", text_min_text_length=0, text_font_size=None,
-                          text_font_size_offset=0, text_font_size_minimum=-1,
+                          text_font_size_offset=0, text_font_size_minimum=-1, text_force_render_orientation="auto",
+                          text_alignment="auto", text_case="sentence", text_manga2eng=False,
+                          text_filter_text=None, text_gimp_font="Sans-serif", text_font_path=None,
+                          misc_overwrite=False,
                           progress=gr.Progress()):
+        
         if image_zip_file:
-            print("Processing image zip file")
             params = {
                 'translator': translator,
                 'target_lang': target_lang,
@@ -1280,7 +1299,7 @@ class MangaTranslatorWeb2(MangaTranslator):
                 'upscaler': image_upscaler,
                 'upscale_ratio': image_upscale_ratio,
                 'detection_size': image_detection_size,
-                'colorizer': image_colorizer,
+                'colorizer': image_colorizer if image_colorizer != "None" else None,
                 'attempts': misc_attempts,
                 'skip_errors': misc_skip_errors,
                 'revert_upscaling': image_revert_upscaling,
@@ -1299,14 +1318,44 @@ class MangaTranslatorWeb2(MangaTranslator):
                 'min_text_length': text_min_text_length,
                 'font_size': text_font_size if text_font_size > 0 else None,
                 'font_size_offset': text_font_size_offset,
-                'font_size_minimum': text_font_size_minimum
+                'font_size_minimum': text_font_size_minimum,
+                'manga2eng': text_manga2eng,
+                'filter_text': text_filter_text,
+                'gimp_font': text_gimp_font,
+                'font_path': text_font_path,
+                'overwrite': misc_overwrite
             }
-            # text, dest = await self.process_zip_file(image_zip_file, translator_params=params, progress=progress)
-            # return dest
-            task = self.process_zip_file(image_zip_file, translator_params=params, progress=progress)
-            text, dest = asyncio.run(task)
-            print("text: " + str(text) + ", dest: " + str(dest))
-            return dest
+            
+            if (text_force_render_orientation == 'horizontal'):
+                params['force_horizontal'] = True
+            elif (text_force_render_orientation == 'vertical'):
+                params['force_vertical'] = True
+                
+            if (text_alignment == 'left'):
+                params['align_left'] = True
+            elif (text_alignment == 'right'):
+                params['align_right'] = True
+            elif (text_alignment == 'center'):
+                params['align_center'] = True
+                
+            if (text_case == 'upper'):
+                params['uppercase'] = True
+            elif (text_case == 'lower'):
+                params['lowercase'] = True
+                
+                
+            try:
+                startTime = time.time()
+                task = self.process_zip_file(image_zip_file, translator_params=params, progress=progress)
+                text, dest = asyncio.run(task)
+                endTime = time.time()
+                totalTime = round(endTime - startTime, 2)
+                status = "Successfully translated zip file.\n" + "Time taken: " + str(totalTime) + " seconds"
+            except Exception as e:
+                dest = None
+                status = "Failed to translate zip file:\n" + str(e)
+                
+            return dest, status
         else:
             raise ValueError("Unsupported file format. Please upload an image file.")
         
@@ -1324,6 +1373,8 @@ class MangaTranslatorWeb2(MangaTranslator):
             raise ValueError("The provided file is not a valid zip file. Please upload a valid zip file containing text files.")
         
     async def start(self):
+        colorizer_list = ['None']
+        colorizer_list.extend(COLORIZERS.keys())
         with gr.Blocks() as interface:
             gr.Markdown("Manga Translation")
             with gr.Tab("Single"):
@@ -1332,14 +1383,20 @@ class MangaTranslatorWeb2(MangaTranslator):
                         image_file_input = gr.inputs.File(label="Upload Image File")
                         image_submit_button = gr.Button("Submit")
                     with gr.Column(min_width=600):
-                        image_output_file = gr.Image(label="Download Translated Image File")
+                        with gr.Row():
+                            image_output_file = gr.Image(label="Download Translated Image File")
+                        with gr.Row():
+                            image_output_text = gr.Textbox(label="Status", lines=2)
             with gr.Tab("Batch/ZIP"):
                 with gr.Row():
                     with gr.Column(min_width=600):
                         image_zip_file_input = gr.inputs.File(type="file", label="Batch Image(Zip)")
                         image_zip_submit_button = gr.Button("Submit")
-                    with gr.Column(min_width=600, scale=2):
-                        image_zip_output_file = gr.outputs.File(label="Download Zip File")
+                    with gr.Column(min_width=600):
+                        with gr.Row():
+                            image_zip_output_file = gr.outputs.File(label="Download Zip File")
+                        with gr.Row():
+                            image_zip_output_text = gr.Textbox(label="Status", lines=2)
                         
             with gr.Column():
                 gr.Markdown("Translator Settings")
@@ -1358,7 +1415,7 @@ class MangaTranslatorWeb2(MangaTranslator):
                     image_detection_size = gr.inputs.Slider(minimum=0, maximum=2560, step=1, label="Image Detection Size", default=2048)
                     image_revert_upscaling = gr.inputs.Checkbox(label="Revert Upscaling", default=False)
                 with gr.Row():
-                    image_colorizer = gr.inputs.Dropdown(list(COLORIZERS.keys()), label="Image Colorizer", default=None, optional=True)
+                    image_colorizer = gr.inputs.Dropdown(colorizer_list, label="Image Colorizer", default="None", optional=True)
                     image_det_rotate = gr.inputs.Checkbox(label="Rotate", default=False)
                     image_det_auto_rotate = gr.inputs.Checkbox(label="Auto Rotate", default=False)
                     image_det_invert = gr.inputs.Checkbox(label="Invert", default=False)
@@ -1392,13 +1449,12 @@ class MangaTranslatorWeb2(MangaTranslator):
                 with gr.Row():
                     text_font_path = gr.inputs.File(label="Font Path", optional=True)
                     
-                    
-                    
             with gr.Column():
                 gr.Markdown("Misc")
                 with gr.Row():
                     misc_attempts = gr.inputs.Slider(minimum=0, maximum=10, step=1, label="Attempts", default=0)
                     misc_skip_error = gr.inputs.Checkbox(label="Skip Error", default=False)
+                    misc_overwrite = gr.inputs.Checkbox(label="Overwrite", default=False)
                     
             default_params = [
                 translator_translator,
@@ -1429,6 +1485,14 @@ class MangaTranslatorWeb2(MangaTranslator):
                 text_font_size,
                 text_font_size_offset,
                 text_font_size_minimum,
+                text_force_render_orientation,
+                text_alignment,
+                text_case,
+                text_manga2eng,
+                text_filter_text,
+                text_gimp_font,
+                text_font_path,
+                misc_overwrite
             ]
             
             image_submit = [
@@ -1443,8 +1507,8 @@ class MangaTranslatorWeb2(MangaTranslator):
             
         
             image_submit_button.click(self.process_image_sync, inputs=image_submit,
-                outputs=[image_output_file])
+                outputs=[image_output_file, image_output_text])
             image_zip_submit_button.click(self.process_image_zip, inputs=image_zip_submit,
-                outputs=[image_zip_output_file])
+                outputs=[image_zip_output_file, image_zip_output_text])
         
         interface.queue(concurrency_count=2).launch(server_name=self.host, debug=True, share=self.share)
