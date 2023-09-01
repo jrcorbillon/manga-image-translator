@@ -15,6 +15,7 @@ import logging
 import numpy as np
 import gradio as gr
 import zipfile
+import hashlib
 from PIL import Image
 from typing import List, Tuple
 from aiohttp import web
@@ -1116,23 +1117,22 @@ class MangaTranslatorWeb2(MangaTranslator):
         super().__init__(params)
         self.translator = None
         self.host = params.get('host', '127.0.0.1')
+        self.port = params.get('port', '7860')
         self.share = params.get('share', False)
        
-    async def process_zip_file(self, zip_file, translator_params=None, whisper_params=None, progress=gr.Progress()):
-        # print filename of zip_file
+    async def process_zip_file(self, zip_file, translator_params=None, progress=gr.Progress()):
         self.fixBadZipfile(zip_file.name)
         zip_file_name = os.path.splitext(os.path.basename(zip_file.name))[0].strip()
         output_text = ""
         output_files = []
+        params_hash = translator_params.get('params_hash', '')
         try:
             with zipfile.ZipFile(zip_file.name, "r") as zf:
                 for file_info in progress.tqdm(zf.infolist(), desc="Processing Files", unit="files"):
                     file_extension = os.path.splitext(file_info.filename)[1].lower()[1:]
                     
                     if file_extension in ["jpg", "jpeg", "png", "bmp", "gif", "webp"]:
-                        print("[process_zip_file] image file: " + file_info.filename.split('/')[-1])
-                        dir_name = os.path.splitext(os.path.basename(zip_file.name))[0].strip()
-                        temp_file_name = os.path.join(BASE_PATH, 'result', dir_name, file_info.filename.split('/')[-1])
+                        temp_file_name = os.path.join(BASE_PATH, 'result', zip_file_name, file_info.filename.split('/')[-1])
                         os.makedirs(os.path.dirname(temp_file_name), exist_ok=True)
                         with zf.open(file_info.filename) as file:
                             with open(temp_file_name, "wb") as temp_file:
@@ -1142,15 +1142,15 @@ class MangaTranslatorWeb2(MangaTranslator):
                         # check if output file path exist
                         if not os.path.exists(out_file_name):
                             # remove "-translated" from filename
-                            out_file_name = out_file_name.replace("-translated", "")
+                            out_file_name = out_file_name.replace(f"-{params_hash}-translated", "")
                         output_files.append({"name":out_file_name, "data": None})
                     else:
                         raise ValueError("Unsupported file format. Please upload a zip file containing text files in .txt format.")
             
             # Create a new zip file
             # create path for zip file
-            os.makedirs(os.path.join(BASE_PATH, 'result', dir_name), exist_ok=True)
-            with zipfile.ZipFile(os.path.join(BASE_PATH, 'result', dir_name, f'{zip_file_name}-translated.zip'), 'w') as zip_file:
+            # os.makedirs(os.path.join(BASE_PATH, 'result', zip_file_name), exist_ok=True)
+            with zipfile.ZipFile(os.path.join(BASE_PATH, 'result', zip_file_name, f'{zip_file_name}-{params_hash}-translated.zip'), 'w') as zip_file:
                 # Add the translated text file to the zip file
                 for file in progress.tqdm(output_files, desc="Creating Zip File", unit="files"):
                     if file["data"] is not None:
@@ -1158,7 +1158,7 @@ class MangaTranslatorWeb2(MangaTranslator):
                     else:
                         arcname = os.path.basename(file["name"])
                         zip_file.write(file["name"], arcname)
-            return output_text, os.path.join(BASE_PATH, 'result', dir_name, f'{zip_file_name}-translated.zip')
+            return output_text, os.path.join(BASE_PATH, 'result', zip_file_name, f'{zip_file_name}-{params_hash}-translated.zip')
         
         except BadZipFile:
             raise ValueError("The provided file is not a valid zip file. Please upload a valid zip file containing text files.")
@@ -1167,14 +1167,13 @@ class MangaTranslatorWeb2(MangaTranslator):
     async def process_image(self, image_file=None, params={}):
         params = params.copy()
         if image_file:
+            params_hash = params.get('params_hash', '')
             dir_name = os.path.split(os.path.split(image_file.name)[0])[1].strip()
-            file_name = os.path.splitext(os.path.split(image_file.name)[1])[0] + "-translated." + params.get('format', 'jpg')
+            file_name = os.path.splitext(os.path.split(image_file.name)[1])[0] + f"-{params_hash}-translated." + params.get('format', 'jpg')
             dest = os.path.join(BASE_PATH, 'result', dir_name, file_name)
-            if os.path.exists(dest):
-                os.remove(dest)
-
-            # create directory if not exist
-            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            
+            if not os.path.exists(dest):
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
 
             if params.get('device') == "cuda_limited":
                 params['use_cuda_limited'] = True
@@ -1205,7 +1204,7 @@ class MangaTranslatorWeb2(MangaTranslator):
                            text_font_size_offset=0, text_font_size_minimum=-1, text_force_render_orientation="auto",
                            text_alignment="auto", text_case="sentence", text_manga2eng=False,
                            text_filter_text=None, text_gimp_font="Sans-serif", text_font_path=None,
-                           misc_overwrite=False
+                           misc_overwrite=False, image_ignore_bubble=0
                            ):
         
         params = {
@@ -1241,7 +1240,8 @@ class MangaTranslatorWeb2(MangaTranslator):
             'filter_text': text_filter_text,
             'gimp_font': text_gimp_font,
             'font_path': text_font_path,
-            'overwrite': misc_overwrite
+            'overwrite': misc_overwrite,
+            'ignore_bubble': image_ignore_bubble
         }
         
         if (text_force_render_orientation == 'horizontal'):
@@ -1261,6 +1261,10 @@ class MangaTranslatorWeb2(MangaTranslator):
             print("upper: " + str(params['uppercase']))
         elif (text_case == 'lowercase'):
             params['lowercase'] = True
+            
+        file_translated = self.file_already_exists(image_file, params)
+        if file_translated and not misc_overwrite:
+            return file_translated, "File already exists. Skipping translation."
        
         try:
             startTime = time.time()
@@ -1286,7 +1290,7 @@ class MangaTranslatorWeb2(MangaTranslator):
                           text_font_size_offset=0, text_font_size_minimum=-1, text_force_render_orientation="auto",
                           text_alignment="auto", text_case="sentence", text_manga2eng=False,
                           text_filter_text=None, text_gimp_font="Sans-serif", text_font_path=None,
-                          misc_overwrite=False,
+                          misc_overwrite=False, image_ignore_bubble=0,
                           progress=gr.Progress()):
         
         if image_zip_file:
@@ -1323,7 +1327,8 @@ class MangaTranslatorWeb2(MangaTranslator):
                 'filter_text': text_filter_text,
                 'gimp_font': text_gimp_font,
                 'font_path': text_font_path,
-                'overwrite': misc_overwrite
+                'overwrite': misc_overwrite,
+                'ignore_bubble': image_ignore_bubble
             }
             
             if (text_force_render_orientation == 'horizontal'):
@@ -1343,6 +1348,9 @@ class MangaTranslatorWeb2(MangaTranslator):
             elif (text_case == 'lower'):
                 params['lowercase'] = True
                 
+            file_translated = self.zipfile_already_exists(image_zip_file, params)
+            if file_translated and not misc_overwrite:
+                return file_translated, "File already exists. Skipping translation."
                 
             try:
                 startTime = time.time()
@@ -1364,13 +1372,42 @@ class MangaTranslatorWeb2(MangaTranslator):
         data = f.read()  
         pos = data.find(b'\x50\x4b\x05\x06') # End of central directory signature  
         if (pos > 0):  
-            print("Trancating file at location " + str(pos + 22)+ ".")  
+            # print("Trancating file at location " + str(pos + 22)+ ".")  
             f.seek(pos + 22)   # size of 'ZIP end of central directory record' 
             f.truncate()  
             f.close()  
         else:  
             # raise error, file is truncated
             raise ValueError("The provided file is not a valid zip file. Please upload a valid zip file containing text files.")
+        
+    def zipfile_already_exists(self, file_path, params):
+        params_hash = self.generate_md5_signature(params)
+        params['params_hash'] = params_hash
+        dir_name = os.path.splitext(os.path.basename(file_path.name))[0].strip()
+        translated_file = os.path.join(BASE_PATH, 'result', dir_name, f'{dir_name}-{params_hash}-translated.zip')
+        if os.path.exists(translated_file):
+            return translated_file
+        return None
+    
+    def file_already_exists(self, file_path, params):
+        params_hash = self.generate_md5_signature(params)
+        params['params_hash'] = params_hash
+        dir_name = os.path.splitext(os.path.basename(file_path.name))[0].strip()
+        file_name = os.path.splitext(os.path.basename(file_path.name))[0] + f"-{params_hash}-translated." + params.get('format', 'jpg')
+        translated_file = os.path.join(BASE_PATH, 'result', dir_name, file_name)
+        if os.path.exists(translated_file):
+            return translated_file
+        return None
+    
+    def generate_md5_signature(self, params):
+        params_copy = params.copy()
+        del params_copy['overwrite']
+        del params_copy['attempts']
+        del params_copy['skip_errors']
+        input_string = str(params_copy)
+        m = hashlib.md5()
+        m.update(input_string.encode('utf-8'))
+        return m.hexdigest()[-6:]
         
     async def start(self):
         colorizer_list = ['None']
@@ -1425,9 +1462,10 @@ class MangaTranslatorWeb2(MangaTranslator):
                     image_box_threshold = gr.inputs.Slider(minimum=0.1, maximum=5, step=0.01, label="Box Threshold", default=0.7)
                     image_text_threshold = gr.inputs.Slider(minimum=0.1, maximum=5, step=0.01, label="Text Threshold", default=0.5)
                     image_inpainting_size = gr.inputs.Slider(minimum=0, maximum=4096, step=1, label="Inpainting Size", default=2048)
-                    image_colorization_size = gr.inputs.Slider(minimum=0, maximum=4096, step=1, label="Colorization Size", default=576)
+                    image_colorization_size = gr.inputs.Slider(minimum=-1, maximum=4096, step=1, label="Colorization Size", default=576)
                     
                 with gr.Row():
+                    image_ignore_bubble = gr.inputs.Slider(minimum=0, maximum=50, step=1, label="Ignore Bubble", default=0)
                     image_denoise_sigma = gr.inputs.Slider(minimum=0, maximum=100, step=0.1, label="Denoise Sigma", default=30)
                     image_save_quality = gr.inputs.Slider(minimum=0, maximum=100, step=1, label="Save Quality", default=85)
                     image_save_file_type = gr.inputs.Dropdown(["jpg", "png", "webp"], label="Save File Type", default="jpg")
@@ -1492,7 +1530,8 @@ class MangaTranslatorWeb2(MangaTranslator):
                 text_filter_text,
                 text_gimp_font,
                 text_font_path,
-                misc_overwrite
+                misc_overwrite,
+                image_ignore_bubble
             ]
             
             image_submit = [
@@ -1511,4 +1550,4 @@ class MangaTranslatorWeb2(MangaTranslator):
             image_zip_submit_button.click(self.process_image_zip, inputs=image_zip_submit,
                 outputs=[image_zip_output_file, image_zip_output_text])
         
-        interface.queue(concurrency_count=2).launch(server_name=self.host, debug=True, share=self.share)
+        interface.queue(concurrency_count=1).launch(server_name=self.host, debug=True, share=self.share, server_port=self.port)

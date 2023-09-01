@@ -92,7 +92,6 @@ parser.add_argument('--inpainter', default='lama_mpe', type=str, choices=INPAINT
 parser.add_argument('--upscaler', default='esrgan', type=str, choices=UPSCALERS, help='Upscaler to use. --upscale-ratio has to be set for it to take effect')
 parser.add_argument('--upscale-ratio', default=None, type=int, choices=[1, 2, 3, 4, 8, 16, 32], help='Image upscale ratio applied before detection. Can improve text detection.')
 parser.add_argument('--colorizer', default=None, type=str, choices=COLORIZERS, help='Colorization model to use.')
-parser.add_argument('--share', action='store_true', help='Share gradio link')
 
 g = parser.add_mutually_exclusive_group()
 g.add_argument('--translator', default='google', type=str, choices=TRANSLATORS, help='Language translator to use')
@@ -156,6 +155,7 @@ parser.add_argument('--nonce', default=os.getenv('MT_WEB_NONCE', ''), type=str, 
 parser.add_argument('--ws-url', default='ws://localhost:5000', type=str, help='Server URL for WebSocket mode')
 parser.add_argument('--save-quality', default=100, type=int, help='Quality of saved JPEG image, range from 0 to 100 with 100 being best')
 parser.add_argument('--ignore-bubble', default=0, type=int, help='The threshold for ignoring text in non bubble areas, with valid values ranging from 1 to 50, does not ignore others. Recommendation 5 to 10. If it is too small, normal bubble areas may be ignored, and if it is too large, non bubble areas may be considered normal bubbles')
+parser.add_argument('--share', action='store_true', help='Share gradio link(only for web2 mode)')
 
 # Generares dict with a default value for each argument
 DEFAULT_ARGS = vars(parser.parse_args([]))
