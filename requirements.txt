@@ -10,7 +10,7 @@ shapely
 requests
 oscrypto 
 freetype-py
-googletrans==4.0.0rc1
+googletrans-py
 aiohttp
 tqdm
 deepl
