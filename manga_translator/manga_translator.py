@@ -1210,7 +1210,7 @@ class MangaTranslatorWeb2(MangaTranslator):
                            image_save_file_type="jpg", text_min_text_length=0, text_font_size=None,
                            text_font_size_offset=0, text_font_size_minimum=-1, text_force_render_orientation="auto",
                            text_alignment="auto", text_case="sentence", text_manga2eng=False,
-                           text_filter_text=None, text_gimp_font="Sans-serif", text_font_path=None,
+                           text_filter_text=None, text_gimp_font="Sans-serif", text_font_file=None,
                            misc_overwrite=False, image_ignore_bubble=0
                            ):
         
@@ -1246,10 +1246,12 @@ class MangaTranslatorWeb2(MangaTranslator):
             'manga2eng': text_manga2eng,
             'filter_text': text_filter_text,
             'gimp_font': text_gimp_font,
-            'font_path': text_font_path,
             'overwrite': misc_overwrite,
             'ignore_bubble': image_ignore_bubble
         }
+        
+        if text_font_file is not None:
+            params['font_path'] = text_font_file.name
         
         if (text_force_render_orientation == 'horizontal'):
             params['force_horizontal'] = True
@@ -1282,6 +1284,7 @@ class MangaTranslatorWeb2(MangaTranslator):
         except Exception as e:
             result = None
             status = "Failed to translate image:\n" + str(e)
+            raise e
         
         return result, status
         
@@ -1296,7 +1299,7 @@ class MangaTranslatorWeb2(MangaTranslator):
                           image_save_file_type="jpg", text_min_text_length=0, text_font_size=None,
                           text_font_size_offset=0, text_font_size_minimum=-1, text_force_render_orientation="auto",
                           text_alignment="auto", text_case="sentence", text_manga2eng=False,
-                          text_filter_text=None, text_gimp_font="Sans-serif", text_font_path=None,
+                          text_filter_text=None, text_gimp_font="Sans-serif", text_font_file=None,
                           misc_overwrite=False, image_ignore_bubble=0,
                           progress=gr.Progress()):
         
@@ -1333,10 +1336,12 @@ class MangaTranslatorWeb2(MangaTranslator):
                 'manga2eng': text_manga2eng,
                 'filter_text': text_filter_text,
                 'gimp_font': text_gimp_font,
-                'font_path': text_font_path,
                 'overwrite': misc_overwrite,
                 'ignore_bubble': image_ignore_bubble
             }
+            
+            if text_font_file is not None:
+                params['font_path'] = text_font_file.name
             
             if (text_force_render_orientation == 'horizontal'):
                 params['force_horizontal'] = True
@@ -1492,7 +1497,7 @@ class MangaTranslatorWeb2(MangaTranslator):
                     text_filter_text = gr.inputs.Textbox(label="Filter Text", default=None)
                     text_gimp_font = gr.inputs.Textbox(label="GIMP Font", default="Sans-serif")
                 with gr.Row():
-                    text_font_path = gr.inputs.File(label="Font Path", optional=True)
+                    text_font_file = gr.inputs.File(label="Font Path", optional=True)
                     
             with gr.Column():
                 gr.Markdown("Misc")
@@ -1536,7 +1541,7 @@ class MangaTranslatorWeb2(MangaTranslator):
                 text_manga2eng,
                 text_filter_text,
                 text_gimp_font,
-                text_font_path,
+                text_font_file,
                 misc_overwrite,
                 image_ignore_bubble
             ]
