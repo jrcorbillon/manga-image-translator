@@ -1184,8 +1184,11 @@ class MangaTranslatorWeb2(MangaTranslator):
 
             if params.get('device') == "cuda_limited":
                 params['use_cuda_limited'] = True
+            
+            if params.get('device') == "cuda":
+                params['use_cuda'] = True
                 
-            self.device = 'cuda' if params.get('device', False) else 'cpu'
+            self.device = 'cuda' if params.get('use_cuda', False) else 'cpu'
             self._cuda_limited_memory = params.get('use_cuda_limited', False)
             if self._cuda_limited_memory and not self.using_cuda:
                 self.device = 'cuda'
@@ -1284,7 +1287,6 @@ class MangaTranslatorWeb2(MangaTranslator):
         except Exception as e:
             result = None
             status = "Failed to translate image:\n" + str(e)
-            raise e
         
         return result, status
         
