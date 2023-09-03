@@ -309,9 +309,9 @@ ARA: Arabic
 
 ```text
 -h, --help                                   show this help message and exit
--m, --mode {demo,batch,web,web_client,ws,api}
+-m, --mode {demo,batch,web,web_client,ws,api,web2}
                                              Run demo in single image demo mode (demo), batch
-                                             translation mode (batch), web service mode (web)
+                                             translation mode (batch), web service mode (web), advanced single/batch web mode (web2)
 -i, --input INPUT [INPUT ...]                Path to an image file if using demo mode, or path to an
                                              image folder if using batch mode
 -o, --dest DEST                              Path to the destination folder for translated images in
@@ -410,6 +410,7 @@ ARA: Arabic
                                              normal bubble areas may be ignored, and if it is too
                                              large, non bubble areas may be considered normal
                                              bubbles
+--share                                      Share gradio link for colab (web2)
 ```
 
 <!-- Auto generated end -->

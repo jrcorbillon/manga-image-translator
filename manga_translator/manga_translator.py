@@ -1129,6 +1129,7 @@ class MangaTranslatorWeb2(MangaTranslator):
        
     async def process_zip_file(self, zip_file, translator_params=None, progress=gr.Progress()):
         self.fixBadZipfile(zip_file.name)
+        self.validateZipFile(zip_file.name)
         zip_file_name = os.path.splitext(os.path.basename(zip_file.name))[0].strip()
         output_text = ""
         output_files = []
@@ -1151,8 +1152,6 @@ class MangaTranslatorWeb2(MangaTranslator):
                             # remove "-translated" from filename
                             out_file_name = out_file_name.replace(f"-{params_hash}-translated", "")
                         output_files.append({"name":out_file_name, "data": None})
-                    else:
-                        raise ValueError("Unsupported file format. Please upload a zip file containing text files in .txt format.")
             
             # Create a new zip file
             # create path for zip file
@@ -1168,11 +1167,10 @@ class MangaTranslatorWeb2(MangaTranslator):
             return output_text, os.path.join(BASE_PATH, 'result', zip_file_name, f'{zip_file_name}-{params_hash}-translated.zip')
         
         except BadZipFile:
-            raise ValueError("The provided file is not a valid zip file. Please upload a valid zip file containing text files.")
+            raise ValueError("The provided file is not a valid zip file. Please upload a valid zip file containing image files.")
         
         
     async def process_image(self, image_file=None, params={}):
-        params = params.copy()
         if image_file:
             params_hash = params.get('params_hash', '')
             dir_name = os.path.split(os.path.split(image_file.name)[0])[1].strip()
@@ -1181,21 +1179,6 @@ class MangaTranslatorWeb2(MangaTranslator):
             
             if not os.path.exists(dest):
                 os.makedirs(os.path.dirname(dest), exist_ok=True)
-
-            if params.get('device') == "cuda_limited":
-                params['use_cuda_limited'] = True
-            
-            if params.get('device') == "cuda":
-                params['use_cuda'] = True
-                
-            self.device = 'cuda' if params.get('use_cuda', False) else 'cpu'
-            self._cuda_limited_memory = params.get('use_cuda_limited', False)
-            if self._cuda_limited_memory and not self.using_cuda:
-                self.device = 'cuda'
-            if self.using_cuda and not torch.cuda.is_available():
-                raise Exception('CUDA compatible device could not be found whilst --use-cuda args was set...')
-
-            del params['device']
             
             await self.translate_path(path=image_file.name, dest=dest, params=params)
             return dest
@@ -1220,7 +1203,6 @@ class MangaTranslatorWeb2(MangaTranslator):
         params = {
             'translator': translator,
             'target_lang': target_lang,
-            'device': device,
             'detector': image_detector,
             'inpainter': image_inpainter,
             'upscaler': image_upscaler,
@@ -1274,12 +1256,19 @@ class MangaTranslatorWeb2(MangaTranslator):
         elif (text_case == 'lowercase'):
             params['lowercase'] = True
             
+        if device == "cuda_limited":
+            params['use_cuda_limited'] = True
+        elif device == "cuda":
+            params['use_cuda'] = True
+                        
+            
         file_translated = self.file_already_exists(image_file, params)
         if file_translated and not misc_overwrite:
             return file_translated, "File already exists. Skipping translation."
-       
+        
         try:
             startTime = time.time()
+            super().__init__(params)
             result = asyncio.run(self.process_image(image_file, params))
             endTime = time.time()
             totalTime = round(endTime - startTime, 2)
@@ -1309,7 +1298,6 @@ class MangaTranslatorWeb2(MangaTranslator):
             params = {
                 'translator': translator,
                 'target_lang': target_lang,
-                'device': device,
                 'detector': image_detector,
                 'inpainter': image_inpainter,
                 'upscaler': image_upscaler,
@@ -1362,14 +1350,19 @@ class MangaTranslatorWeb2(MangaTranslator):
             elif (text_case == 'lower'):
                 params['lowercase'] = True
                 
+            if device == "cuda_limited":
+                params['use_cuda_limited'] = True
+            elif device == "cuda":
+                params['use_cuda'] = True
+                
             file_translated = self.zipfile_already_exists(image_zip_file, params)
             if file_translated and not misc_overwrite:
                 return file_translated, "File already exists. Skipping translation."
-                
+                                       
             try:
                 startTime = time.time()
-                task = self.process_zip_file(image_zip_file, translator_params=params, progress=progress)
-                text, dest = asyncio.run(task)
+                super().__init__(params)
+                text, dest = asyncio.run(self.process_zip_file(image_zip_file, translator_params=params, progress=progress))
                 endTime = time.time()
                 totalTime = round(endTime - startTime, 2)
                 status = "Successfully translated zip file.\n" + "Time taken: " + str(totalTime) + " seconds"
@@ -1393,6 +1386,13 @@ class MangaTranslatorWeb2(MangaTranslator):
         else:  
             # raise error, file is truncated
             raise ValueError("The provided file is not a valid zip file. Please upload a valid zip file containing text files.")
+        
+    def validateZipFile(self, zipFile):
+        with zipfile.ZipFile(zipFile, "r") as zf:
+            for file_info in zf.infolist():
+                if file_info.filename.count('/') > 0:
+                    raise ValueError("The provided zip file contains subfolders. Please upload a zip file containing only image files.")
+            
         
     def zipfile_already_exists(self, file_path, params):
         params_hash = self.generate_md5_signature(params)
@@ -1427,7 +1427,7 @@ class MangaTranslatorWeb2(MangaTranslator):
         colorizer_list = ['None']
         colorizer_list.extend(COLORIZERS.keys())
         with gr.Blocks() as interface:
-            gr.Markdown("Manga Translation")
+            gr.Markdown("Manga Image Translator")
             with gr.Tab("Single"):
                 with gr.Row():
                     with gr.Column(min_width=600):
