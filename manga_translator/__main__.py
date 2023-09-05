@@ -8,7 +8,7 @@ from .manga_translator import (
     MangaTranslatorWeb,
     MangaTranslatorWS,
     MangaTranslatorAPI,
-    MangaTranslatorWeb2,
+    MangaTranslatorGradio,
     set_main_logger,
 )
 from .args import parser
@@ -46,8 +46,8 @@ async def dispatch(args: Namespace):
         from .server.web_main import dispatch
         await dispatch(args.host, args.port, translation_params=args_dict)
         
-    elif args.mode == 'web2':
-        translator = MangaTranslatorWeb2(args_dict)
+    elif args.mode == 'gradio':
+        translator = MangaTranslatorGradio(args_dict)
         await translator.start()
 
     elif args.mode == 'web_client':

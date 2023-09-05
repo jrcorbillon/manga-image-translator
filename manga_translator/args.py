@@ -80,7 +80,7 @@ class HelpFormatter(argparse.HelpFormatter):
 
 
 parser = argparse.ArgumentParser(prog='manga_translator', description='Seamlessly translate mangas into a chosen language', formatter_class=HelpFormatter)
-parser.add_argument('-m', '--mode', default='demo', type=str, choices=['demo', 'batch', 'web', 'web_client', 'ws', 'api', 'web2'], help='Run demo in single image demo mode (demo), batch translation mode (batch), web service mode (web)')
+parser.add_argument('-m', '--mode', default='demo', type=str, choices=['demo', 'batch', 'web', 'web_client', 'ws', 'api', 'gradio'], help='Run demo in single image demo mode (demo), batch translation mode (batch), web service mode (web), web mode advanced (gradio)')
 parser.add_argument('-i', '--input', default=None, type=path, nargs='+', help='Path to an image file if using demo mode, or path to an image folder if using batch mode')
 parser.add_argument('-o', '--dest', default='', type=str, help='Path to the destination folder for translated images in batch mode')
 parser.add_argument('-l', '--target-lang', default='CHS', type=str, choices=VALID_LANGUAGES, help='Destination language')
@@ -155,7 +155,7 @@ parser.add_argument('--nonce', default=os.getenv('MT_WEB_NONCE', ''), type=str, 
 parser.add_argument('--ws-url', default='ws://localhost:5000', type=str, help='Server URL for WebSocket mode')
 parser.add_argument('--save-quality', default=100, type=int, help='Quality of saved JPEG image, range from 0 to 100 with 100 being best')
 parser.add_argument('--ignore-bubble', default=0, type=int, help='The threshold for ignoring text in non bubble areas, with valid values ranging from 1 to 50, does not ignore others. Recommendation 5 to 10. If it is too small, normal bubble areas may be ignored, and if it is too large, non bubble areas may be considered normal bubbles')
-parser.add_argument('--share', action='store_true', help='Share gradio link(only for web2 mode)')
+parser.add_argument('--share', action='store_true', help='Share gradio link (gradio)')
 
 # Generares dict with a default value for each argument
 DEFAULT_ARGS = vars(parser.parse_args([]))

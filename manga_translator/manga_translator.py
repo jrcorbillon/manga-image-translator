@@ -1119,7 +1119,7 @@ class MangaTranslatorAPI(MangaTranslator):
         clientUuid = fields.Raw(required=False)
 
 
-class MangaTranslatorWeb2(MangaTranslator):
+class MangaTranslatorGradio(MangaTranslator):
     def __init__(self, params: dict = None):
         super().__init__(params)
         self.translator = None
@@ -1197,7 +1197,7 @@ class MangaTranslatorWeb2(MangaTranslator):
                            text_font_size_offset=0, text_font_size_minimum=-1, text_force_render_orientation="auto",
                            text_alignment="auto", text_case="sentence", text_manga2eng=False,
                            text_filter_text=None, text_gimp_font="Sans-serif", text_font_file=None,
-                           misc_overwrite=False, image_ignore_bubble=0
+                           misc_overwrite=False, image_ignore_bubble=0, translator_gpt_config=None
                            ):
         
         params = {
@@ -1260,6 +1260,9 @@ class MangaTranslatorWeb2(MangaTranslator):
             params['use_cuda_limited'] = True
         elif device == "cuda":
             params['use_cuda'] = True
+            
+        if translator_gpt_config is not None:
+            params['gpt_config'] = translator_gpt_config.name
                         
             
         file_translated = self.file_already_exists(image_file, params)
@@ -1291,7 +1294,7 @@ class MangaTranslatorWeb2(MangaTranslator):
                           text_font_size_offset=0, text_font_size_minimum=-1, text_force_render_orientation="auto",
                           text_alignment="auto", text_case="sentence", text_manga2eng=False,
                           text_filter_text=None, text_gimp_font="Sans-serif", text_font_file=None,
-                          misc_overwrite=False, image_ignore_bubble=0,
+                          misc_overwrite=False, image_ignore_bubble=0, translator_gpt_config=None,
                           progress=gr.Progress()):
         
         if image_zip_file:
@@ -1354,6 +1357,9 @@ class MangaTranslatorWeb2(MangaTranslator):
                 params['use_cuda_limited'] = True
             elif device == "cuda":
                 params['use_cuda'] = True
+                
+            if translator_gpt_config is not None:
+                params['gpt_config'] = translator_gpt_config.name
                 
             file_translated = self.zipfile_already_exists(image_zip_file, params)
             if file_translated and not misc_overwrite:
@@ -1453,6 +1459,7 @@ class MangaTranslatorWeb2(MangaTranslator):
                 gr.Markdown("Translator Settings")
                 with gr.Row():
                     translator_translator = gr.inputs.Dropdown(list(TRANSLATORS.keys()), label="Translator", default="offline")
+                    translator_gpt_config = gr.File(label="GPT Config (Optional for GPT Translator)", optional=True)
                     translator_target_lang = gr.inputs.Dropdown(list(VALID_LANGUAGES.keys()), label="Target Language", default="ENG")
                     translator_device = gr.inputs.Radio(["cpu", "cuda", "cuda_limited"], label="Device", default="cpu")
                         
@@ -1545,7 +1552,8 @@ class MangaTranslatorWeb2(MangaTranslator):
                 text_gimp_font,
                 text_font_file,
                 misc_overwrite,
-                image_ignore_bubble
+                image_ignore_bubble,
+                translator_gpt_config
             ]
             
             image_submit = [
