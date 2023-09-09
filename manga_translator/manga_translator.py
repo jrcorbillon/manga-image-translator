@@ -1223,7 +1223,7 @@ class MangaTranslatorGradio(MangaTranslator):
             'detection_size': image_detection_size,
             'colorizer': image_colorizer if image_colorizer != "None" else None,
             'attempts': misc_attempts,
-            'skip_errors': misc_skip_errors,
+            'ignore_errors': misc_skip_errors,
             'revert_upscaling': image_revert_upscaling,
             'det_rotate': image_det_rotate,
             'det_auto_rotate': image_det_auto_rotate,
@@ -1321,7 +1321,7 @@ class MangaTranslatorGradio(MangaTranslator):
                 'detection_size': image_detection_size,
                 'colorizer': image_colorizer if image_colorizer != "None" else None,
                 'attempts': misc_attempts,
-                'skip_errors': misc_skip_errors,
+                'ignore_errors': misc_skip_errors,
                 'revert_upscaling': image_revert_upscaling,
                 'det_rotate': image_det_rotate,
                 'det_auto_rotate': image_det_auto_rotate,
@@ -1436,7 +1436,7 @@ class MangaTranslatorGradio(MangaTranslator):
         params_copy = params.copy()
         del params_copy['overwrite']
         del params_copy['attempts']
-        del params_copy['skip_errors']
+        del params_copy['ignore_errors']
         input_string = str(params_copy)
         m = hashlib.md5()
         m.update(input_string.encode('utf-8'))
