@@ -41,5 +41,7 @@ cython
 aioshutil
 aiofiles
 arabic-reshaper
+pyhyphen
+langcodes
 gradio
 pytorch_lightning
