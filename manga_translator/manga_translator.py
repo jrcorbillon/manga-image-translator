@@ -363,6 +363,9 @@ class MangaTranslator():
         if not ctx.text_regions:
             await self._report_progress('error-translating', True)
             return ctx
+        elif ctx.text_regions == 'cancel':
+            await self._report_progress('cancelled', True)
+            return ctx
 
         # -- Mask refinement
         # (Delayed to take advantage of the region filtering done after ocr and translation)
@@ -389,7 +392,7 @@ class MangaTranslator():
         ctx.img_rendered = await self._run_text_rendering(ctx)
 
         await self._report_progress('finished', True)
-        ctx.result = dump_image(ctx.img_rendered, ctx.img_alpha)
+        ctx.result = dump_image(ctx.input, ctx.img_rendered, ctx.img_alpha)
 
         if ctx.revert_upscaling:
             await self._report_progress('downscaling')
@@ -475,7 +478,7 @@ class MangaTranslator():
             output = await dispatch_eng_render(ctx.img_inpainted, ctx.img_rgb, ctx.text_regions, ctx.font_path)
         else:
             output = await dispatch_rendering(ctx.img_inpainted, ctx.text_regions, ctx.font_path, ctx.font_size, ctx.font_size_offset,
-                                              ctx.font_size_minimum, ctx.render_mask)
+                                              ctx.font_size_minimum, not ctx.no_hyphenation, ctx.render_mask)
         return output
 
     def _result_path(self, path: str) -> str:
@@ -508,6 +511,8 @@ class MangaTranslator():
             'skip-no-regions':      'No text regions! - Skipping',
             'skip-no-text':         'No text regions with text! - Skipping',
             'error-translating':    'Text translator returned empty queries',
+            'error-translating':    'Text translator returned empty queries',
+            'cancelled'        :    'Image translation cancelled',
         }
         LOG_MESSAGES_ERROR = {
             # 'error-lang':           'Target language not supported by chosen translator',
@@ -667,8 +672,8 @@ class MangaTranslatorWeb(MangaTranslator):
             requests.post(f'http://{self.host}:{self.port}/request-manual-internal', json={
                 'task_id': self._task_id,
                 'nonce': self.nonce,
-                'texts': [r.get_text() for r in ctx.text_regions],
-                'translations': [r.translation for r in ctx.text_regions],
+                'texts': [r.get_text() for r in text_regions],
+                'translations': [r.translation for r in text_regions],
             }, timeout=20)
 
             # wait for at most 1 hour for manual translation
@@ -683,10 +688,18 @@ class MangaTranslatorWeb(MangaTranslator):
                     if isinstance(manual_translations, str):
                         if manual_translations == 'error':
                             return []
-                    for region, translation in zip(text_regions, manual_translations):
-                        region.translation = translation
-                        region.target_lang = ctx.translator.langs[-1]
+                    i = 0
+                    for translation in manual_translations:
+                        if not translation.strip():
+                            text_regions.pop(i)
+                            i = i - 1
+                        else:
+                            text_regions[i].translation = translation
+                            text_regions[i].target_lang = ctx.translator.langs[-1]
+                        i = i + 1
                     break
+                elif 'cancel' in ret:
+                    return 'cancel'
                 await asyncio.sleep(0.1)
         return text_regions
 
