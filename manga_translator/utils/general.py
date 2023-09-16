@@ -263,7 +263,7 @@ def dump_image(img_pil: Image.Image, img: np.ndarray, alpha_ch: Image.Image = No
             img = np.concatenate([img.astype(np.uint8), np.array(alpha_ch).astype(np.uint8)[..., None]], axis = 2)
     else:
         img = img.astype(np.uint8)
-    result = img_pil.convert('RGBA')
+    result = img_pil.convert('RGBA').resize((img.shape[1], img.shape[0]))
     result.paste(Image.fromarray(img), mask = alpha_ch)
     return result
 
@@ -335,6 +335,10 @@ class Quadrilateral(object):
     """
     def __init__(self, pts: np.ndarray, text: str, prob: float, fg_r: int = 0, fg_g: int = 0, fg_b: int = 0, bg_r: int = 0, bg_g: int = 0, bg_b: int = 0):
         self.pts = pts
+        # Sort coordinates to start at the top left and go clockwise
+        self.pts = self.pts[np.argsort(self.pts[:,1])]
+        self.pts = self.pts[[*np.argsort(self.pts[:2,0]), *np.argsort(self.pts[2:,0])[::-1] + 2]]
+
         self.text = text
         self.prob = prob
         self.fg_r = fg_r
