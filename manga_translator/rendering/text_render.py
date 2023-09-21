@@ -4,6 +4,7 @@ import cv2
 import numpy as np
 import freetype
 import functools
+import copy
 from typing import Tuple, Optional, List
 from hyphen import Hyphenator
 from hyphen.dictools import LANGUAGES as HYPHENATOR_LANGUAGES
@@ -143,6 +144,7 @@ FALLBACK_FONTS = [
     os.path.join(BASE_PATH, 'fonts/msgothic.ttc'),
 ]
 FONT_SELECTION: List[freetype.Face] = []
+FONT_SELECTION2: List[str] = []
 font_cache = {}
 def get_cached_font(path: str) -> freetype.Face:
     path = path.replace('\\', '/')
@@ -151,12 +153,13 @@ def get_cached_font(path: str) -> freetype.Face:
     return font_cache[path]
 
 def set_font(font_path: str):
-    global FONT_SELECTION
+    global FONT_SELECTION, FONT_SELECTION2
     if font_path:
         selection = [font_path] + FALLBACK_FONTS
     else:
         selection = FALLBACK_FONTS
     FONT_SELECTION = [get_cached_font(p) for p in selection]
+    FONT_SELECTION2 = selection
 
 class namespace:
     pass
@@ -182,9 +185,10 @@ class Glyph:
 
 @functools.lru_cache(maxsize = 1024, typed = True)
 def get_char_glyph(cdpt: str, font_size: int, direction: int) -> Glyph:
-    global FONT_SELECTION
-    for i, face in enumerate(FONT_SELECTION):
-        if face.get_char_index(cdpt) == 0 and i != len(FONT_SELECTION) - 1:
+    global FONT_SELECTION2
+    for i, face_path in enumerate(FONT_SELECTION2):
+        face = freetype.Face(face_path) # using face directly will cause error for some reason on concurrent task...
+        if face.get_char_index(cdpt) == 0 and i != len(FONT_SELECTION2) - 1:
             continue
         if direction == 0:
             face.set_pixel_sizes(0, font_size)
@@ -195,9 +199,10 @@ def get_char_glyph(cdpt: str, font_size: int, direction: int) -> Glyph:
 
 #@functools.lru_cache(maxsize = 1024, typed = True)
 def get_char_border(cdpt: str, font_size: int, direction: int):
-    global FONT_SELECTION
-    for i, face in enumerate(FONT_SELECTION):
-        if face.get_char_index(cdpt) == 0 and i != len(FONT_SELECTION) - 1:
+    global FONT_SELECTION2
+    for i, face_path in enumerate(FONT_SELECTION2):
+        face = freetype.Face(face_path)
+        if face.get_char_index(cdpt) == 0 and i != len(FONT_SELECTION2) - 1:
             continue
         if direction == 0:
             face.set_pixel_sizes(0, font_size)

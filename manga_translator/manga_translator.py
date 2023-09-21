@@ -14,6 +14,7 @@ import numpy as np
 import gradio as gr
 import zipfile
 import hashlib
+import concurrent.futures
 from PIL import Image
 from typing import List, Tuple
 from aiohttp import web
@@ -1139,6 +1140,14 @@ class MangaTranslatorGradio(MangaTranslator):
         self.host = params.get('host', '127.0.0.1')
         self.port = params.get('port', '7860')
         self.share = params.get('share', False)
+        self.first_run = True
+        
+        
+    def run_in_event_loop(self, coroutine, *args, **kwargs):
+        """This function runs the given coroutine in a new event loop."""
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        return loop.run_until_complete(coroutine(*args, **kwargs))
        
     async def process_zip_file(self, zip_file, translator_params=None, progress=gr.Progress()):
         self.fixBadZipfile(zip_file.name)
@@ -1147,22 +1156,44 @@ class MangaTranslatorGradio(MangaTranslator):
         output_text = ""
         output_files = []
         params_hash = translator_params.get('params_hash', '')
+        threads = translator_params.get('threads', 1)
         try:
             with zipfile.ZipFile(zip_file.name, "r") as zf:
-                for file_info in progress.tqdm(zf.infolist(), desc="Processing Files", unit="files"):
-                    file_extension = os.path.splitext(file_info.filename)[1].lower()[1:]
+                with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
+                    futures = []
+                    zip_items = zf.infolist()
                     
-                    if file_extension in ["jpg", "jpeg", "png", "bmp", "gif", "webp"]:
+                    if self.first_run:
+                        logger.info("Warming up the model...")
+                        file_info = zip_items[0]
                         temp_file_name = os.path.join(BASE_PATH, 'result', zip_file_name, file_info.filename.split('/')[-1])
                         os.makedirs(os.path.dirname(temp_file_name), exist_ok=True)
                         with zf.open(file_info.filename) as file:
                             with open(temp_file_name, "wb") as temp_file:
                                 temp_file.write(file.read())
-
-                        out_file_name = await self.process_image(temp_file, translator_params)
-                        # check if output file path exist
+                        translator_params = translator_params.copy()
+                        future = executor.submit(self.run_in_event_loop, self.process_image, temp_file, translator_params)
+                        zip_items = zip_items[1:]
+                        out_file_name = future.result()
                         if not os.path.exists(out_file_name):
-                            # remove "-translated" from filename
+                            out_file_name = out_file_name.replace(f"-{params_hash}-translated", "")
+                        output_files.append({"name":out_file_name, "data": None})
+                        
+                        
+                    for file_info in zip_items:
+                        temp_file_name = os.path.join(BASE_PATH, 'result', zip_file_name, file_info.filename.split('/')[-1])
+                        os.makedirs(os.path.dirname(temp_file_name), exist_ok=True)
+                        with zf.open(file_info.filename) as file:
+                            with open(temp_file_name, "wb") as temp_file:
+                                temp_file.write(file.read())
+                        translator_params = translator_params.copy()
+                        future = executor.submit(self.run_in_event_loop, self.process_image, temp_file, translator_params)
+                        futures.append(future)
+                        
+                        
+                    for future in progress.tqdm(futures, desc="Processing Files", unit="files"):
+                        out_file_name = future.result()
+                        if not os.path.exists(out_file_name):
                             out_file_name = out_file_name.replace(f"-{params_hash}-translated", "")
                         output_files.append({"name":out_file_name, "data": None})
             
@@ -1184,6 +1215,7 @@ class MangaTranslatorGradio(MangaTranslator):
         
         
     async def process_image(self, image_file=None, params={}):
+        self.first_run = False
         if image_file:
             params_hash = params.get('params_hash', '')
             dir_name = os.path.split(os.path.split(image_file.name)[0])[1].strip()
@@ -1210,7 +1242,8 @@ class MangaTranslatorGradio(MangaTranslator):
                            text_font_size_offset=0, text_font_size_minimum=-1, text_force_render_orientation="auto",
                            text_alignment="auto", text_case="sentence", text_manga2eng=False,
                            text_filter_text=None, text_gimp_font="Sans-serif", text_font_file=None,
-                           misc_overwrite=False, image_ignore_bubble=0, translator_gpt_config=None
+                           misc_overwrite=False, image_ignore_bubble=0, translator_gpt_config=None,
+                           translator_threads=1
                            ):
         
         params = {
@@ -1265,7 +1298,6 @@ class MangaTranslatorGradio(MangaTranslator):
             
         if (text_case == 'uppercase'):
             params['uppercase'] = True
-            print("upper: " + str(params['uppercase']))
         elif (text_case == 'lowercase'):
             params['lowercase'] = True
             
@@ -1292,6 +1324,7 @@ class MangaTranslatorGradio(MangaTranslator):
         except Exception as e:
             result = None
             status = "Failed to translate image:\n" + str(e)
+            raise e
         
         return result, status
         
@@ -1308,6 +1341,7 @@ class MangaTranslatorGradio(MangaTranslator):
                           text_alignment="auto", text_case="sentence", text_manga2eng=False,
                           text_filter_text=None, text_gimp_font="Sans-serif", text_font_file=None,
                           misc_overwrite=False, image_ignore_bubble=0, translator_gpt_config=None,
+                          translator_threads=1,
                           progress=gr.Progress()):
         
         if image_zip_file:
@@ -1377,6 +1411,8 @@ class MangaTranslatorGradio(MangaTranslator):
             file_translated = self.zipfile_already_exists(image_zip_file, params)
             if file_translated and not misc_overwrite:
                 return file_translated, "File already exists. Skipping translation."
+            
+            params['threads'] = translator_threads
                                        
             try:
                 startTime = time.time()
@@ -1388,6 +1424,7 @@ class MangaTranslatorGradio(MangaTranslator):
             except Exception as e:
                 dest = None
                 status = "Failed to translate zip file:\n" + str(e)
+                raise e
                 
             return dest, status
         else:
@@ -1445,6 +1482,8 @@ class MangaTranslatorGradio(MangaTranslator):
     async def start(self):
         colorizer_list = ['None']
         colorizer_list.extend(COLORIZERS.keys())
+        device_selected = [self.device]
+        
         with gr.Blocks() as interface:
             gr.Markdown("Manga Image Translator")
             with gr.Tab("Single"):
@@ -1474,7 +1513,8 @@ class MangaTranslatorGradio(MangaTranslator):
                     translator_translator = gr.inputs.Dropdown(list(TRANSLATORS.keys()), label="Translator", default="offline")
                     translator_gpt_config = gr.File(label="GPT Config (Optional for GPT Translator)", optional=True)
                     translator_target_lang = gr.inputs.Dropdown(list(VALID_LANGUAGES.keys()), label="Target Language", default="ENG")
-                    translator_device = gr.inputs.Radio(["cpu", "cuda", "cuda_limited"], label="Device", default="cpu")
+                    translator_device = gr.inputs.Radio(list(device_selected), label="Device", default=self.device)
+                    translator_threads = gr.inputs.Slider(minimum=1, maximum=10, step=1, label="Threads", default=1)
                         
             with gr.Column():
                 gr.Markdown("Image Settings")
@@ -1566,7 +1606,8 @@ class MangaTranslatorGradio(MangaTranslator):
                 text_font_file,
                 misc_overwrite,
                 image_ignore_bubble,
-                translator_gpt_config
+                translator_gpt_config,
+                translator_threads
             ]
             
             image_submit = [
@@ -1585,4 +1626,4 @@ class MangaTranslatorGradio(MangaTranslator):
             image_zip_submit_button.click(self.process_image_zip, inputs=image_zip_submit,
                 outputs=[image_zip_output_file, image_zip_output_text])
         
-        interface.queue(concurrency_count=1).launch(server_name=self.host, debug=True, share=self.share, server_port=self.port)
+        interface.queue(concurrency_count=2).launch(server_name=self.host, debug=True, share=self.share, server_port=self.port)
