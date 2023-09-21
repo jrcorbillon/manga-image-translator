@@ -1140,6 +1140,7 @@ class MangaTranslatorGradio(MangaTranslator):
         self.host = params.get('host', '127.0.0.1')
         self.port = params.get('port', '7860')
         self.share = params.get('share', False)
+        self.first_run = True
         
         
     def run_in_event_loop(self, coroutine, *args, **kwargs):
@@ -1160,7 +1161,26 @@ class MangaTranslatorGradio(MangaTranslator):
             with zipfile.ZipFile(zip_file.name, "r") as zf:
                 with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
                     futures = []
-                    for file_info in zf.infolist():
+                    zip_items = zf.infolist()
+                    
+                    if self.first_run:
+                        logger.info("Warming up the model...")
+                        file_info = zip_items[0]
+                        temp_file_name = os.path.join(BASE_PATH, 'result', zip_file_name, file_info.filename.split('/')[-1])
+                        os.makedirs(os.path.dirname(temp_file_name), exist_ok=True)
+                        with zf.open(file_info.filename) as file:
+                            with open(temp_file_name, "wb") as temp_file:
+                                temp_file.write(file.read())
+                        translator_params = translator_params.copy()
+                        future = executor.submit(self.run_in_event_loop, self.process_image, temp_file, translator_params)
+                        zip_items = zip_items[1:]
+                        out_file_name = future.result()
+                        if not os.path.exists(out_file_name):
+                            out_file_name = out_file_name.replace(f"-{params_hash}-translated", "")
+                        output_files.append({"name":out_file_name, "data": None})
+                        
+                        
+                    for file_info in zip_items:
                         temp_file_name = os.path.join(BASE_PATH, 'result', zip_file_name, file_info.filename.split('/')[-1])
                         os.makedirs(os.path.dirname(temp_file_name), exist_ok=True)
                         with zf.open(file_info.filename) as file:
@@ -1173,9 +1193,7 @@ class MangaTranslatorGradio(MangaTranslator):
                         
                     for future in progress.tqdm(futures, desc="Processing Files", unit="files"):
                         out_file_name = future.result()
-                        # check if output file path exist
                         if not os.path.exists(out_file_name):
-                            # remove "-translated" from filename
                             out_file_name = out_file_name.replace(f"-{params_hash}-translated", "")
                         output_files.append({"name":out_file_name, "data": None})
             
@@ -1197,6 +1215,7 @@ class MangaTranslatorGradio(MangaTranslator):
         
         
     async def process_image(self, image_file=None, params={}):
+        self.first_run = False
         if image_file:
             params_hash = params.get('params_hash', '')
             dir_name = os.path.split(os.path.split(image_file.name)[0])[1].strip()
@@ -1463,6 +1482,8 @@ class MangaTranslatorGradio(MangaTranslator):
     async def start(self):
         colorizer_list = ['None']
         colorizer_list.extend(COLORIZERS.keys())
+        device_selected = [self.device]
+        
         with gr.Blocks() as interface:
             gr.Markdown("Manga Image Translator")
             with gr.Tab("Single"):
@@ -1492,7 +1513,7 @@ class MangaTranslatorGradio(MangaTranslator):
                     translator_translator = gr.inputs.Dropdown(list(TRANSLATORS.keys()), label="Translator", default="offline")
                     translator_gpt_config = gr.File(label="GPT Config (Optional for GPT Translator)", optional=True)
                     translator_target_lang = gr.inputs.Dropdown(list(VALID_LANGUAGES.keys()), label="Target Language", default="ENG")
-                    translator_device = gr.inputs.Radio(["cpu", "cuda", "cuda_limited"], label="Device", default="cpu")
+                    translator_device = gr.inputs.Radio(list(device_selected), label="Device", default=self.device)
                     translator_threads = gr.inputs.Slider(minimum=1, maximum=10, step=1, label="Threads", default=1)
                         
             with gr.Column():
