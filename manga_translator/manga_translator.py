@@ -1153,7 +1153,8 @@ class MangaTranslatorGradio(MangaTranslator):
         self.port = params.get('port', '7860')
         self.share = params.get('share', False)
         self.first_run = True
-        
+        self.gradio_concurrency = params.get('gradio_concurrency', 1)
+        self.params = params
         
     def run_in_event_loop(self, coroutine, *args, **kwargs):
         """This function runs the given coroutine in a new event loop."""
@@ -1242,7 +1243,7 @@ class MangaTranslatorGradio(MangaTranslator):
         else:
             raise ValueError("Unsupported file format. Please upload an image file.")
         
-    def process_image_sync(self, image_file=None, translator="offline", target_lang="ENG",
+    def process_image_sync_plus(self, image_file=None, translator="offline", target_lang="ENG",
                            device="cpu", image_detector="default", image_inpainter="default",
                            image_upscaler="esrgan", image_upscale_ratio=0, image_detection_size=2048,
                            image_colorizer="None", misc_attempts=0, misc_skip_errors=False,
@@ -1253,11 +1254,12 @@ class MangaTranslatorGradio(MangaTranslator):
                            image_save_file_type="jpg", text_min_text_length=0, text_font_size=None,
                            text_font_size_offset=0, text_font_size_minimum=-1, text_force_render_orientation="auto",
                            text_alignment="auto", text_case="sentence", text_manga2eng=False,
-                           text_filter_text=None, text_gimp_font="Sans-serif", text_font_file=None,
+                           text_filter_text='', text_gimp_font="Sans-serif", text_font_file=None,
                            misc_overwrite=False, image_ignore_bubble=0, translator_gpt_config=None,
+                           text_font_color='',
                            translator_threads=1
                            ):
-        
+        image_detection_size = int(image_detection_size)
         params = {
             'translator': translator,
             'target_lang': target_lang,
@@ -1283,15 +1285,18 @@ class MangaTranslatorGradio(MangaTranslator):
             'save_quality': image_save_quality,
             'format': image_save_file_type,
             'min_text_length': text_min_text_length,
-            'font_size': text_font_size if text_font_size > 0 else None,
             'font_size_offset': text_font_size_offset,
             'font_size_minimum': text_font_size_minimum,
             'manga2eng': text_manga2eng,
             'filter_text': text_filter_text,
             'gimp_font': text_gimp_font,
             'overwrite': misc_overwrite,
-            'ignore_bubble': image_ignore_bubble
+            'ignore_bubble': image_ignore_bubble,
+            'font_color': text_font_color,
         }
+        
+        if text_font_size is not None and text_font_size > 0:
+            params['font_size'] = text_font_size
         
         if text_font_file is not None:
             params['font_path'] = text_font_file.name
@@ -1319,8 +1324,7 @@ class MangaTranslatorGradio(MangaTranslator):
             params['use_cuda'] = True
             
         if translator_gpt_config is not None:
-            params['gpt_config'] = translator_gpt_config.name
-                        
+            params['gpt_config'] = translator_gpt_config.name 
             
         file_translated = self.file_already_exists(image_file, params)
         if file_translated and not misc_overwrite:
@@ -1336,11 +1340,10 @@ class MangaTranslatorGradio(MangaTranslator):
         except Exception as e:
             result = None
             status = "Failed to translate image:\n" + str(e)
-            raise e
         
         return result, status
-        
-    def process_image_zip(self, image_zip_file=None, translator="offline", target_lang="ENG",
+    
+    def process_image_zip_plus(self, image_zip_file=None, translator="offline", target_lang="ENG",
                           device="cpu", image_detector="default", image_inpainter="default",
                           image_upscaler="esrgan", image_upscale_ratio=0, image_detection_size=2048, 
                           image_colorizer="None", misc_attempts=0, misc_skip_errors=False,
@@ -1351,11 +1354,12 @@ class MangaTranslatorGradio(MangaTranslator):
                           image_save_file_type="jpg", text_min_text_length=0, text_font_size=None,
                           text_font_size_offset=0, text_font_size_minimum=-1, text_force_render_orientation="auto",
                           text_alignment="auto", text_case="sentence", text_manga2eng=False,
-                          text_filter_text=None, text_gimp_font="Sans-serif", text_font_file=None,
+                          text_filter_text='', text_gimp_font="Sans-serif", text_font_file=None,
                           misc_overwrite=False, image_ignore_bubble=0, translator_gpt_config=None,
+                          text_font_color='',
                           translator_threads=1,
                           progress=gr.Progress()):
-        
+        image_detection_size = int(image_detection_size)
         if image_zip_file:
             params = {
                 'translator': translator,
@@ -1382,15 +1386,18 @@ class MangaTranslatorGradio(MangaTranslator):
                 'save_quality': image_save_quality,
                 'format': image_save_file_type,
                 'min_text_length': text_min_text_length,
-                'font_size': text_font_size if text_font_size > 0 else None,
                 'font_size_offset': text_font_size_offset,
                 'font_size_minimum': text_font_size_minimum,
                 'manga2eng': text_manga2eng,
                 'filter_text': text_filter_text,
                 'gimp_font': text_gimp_font,
                 'overwrite': misc_overwrite,
-                'ignore_bubble': image_ignore_bubble
+                'ignore_bubble': image_ignore_bubble,
+                'font_color': text_font_color
             }
+                        
+            if text_font_size is not None and text_font_size > 0:
+                params['font_size'] = text_font_size
             
             if text_font_file is not None:
                 params['font_path'] = text_font_file.name
@@ -1436,11 +1443,79 @@ class MangaTranslatorGradio(MangaTranslator):
             except Exception as e:
                 dest = None
                 status = "Failed to translate zip file:\n" + str(e)
-                raise e
                 
             return dest, status
         else:
             raise ValueError("Unsupported file format. Please upload an image file.")
+        
+    
+    def get_default_params(self):
+        params = {
+            'device':self.device,
+            'image_inpainter': self.params.get('inpainter', "default"),
+            'image_upscaler': self.params.get('upscaler', "esrgan"),
+            'image_upscale_ratio': self.params.get('upscale_ratio', 0),
+            'image_colorizer': self.params.get('colorizer', "None"),
+            'misc_attempts': self.params.get('attempts', 0),
+            'misc_skip_errors': self.params.get('ignore_errors', False),
+            'image_revert_upscaling': self.params.get('revert_upscaling', False),
+            'image_det_rotate': self.params.get('det_rotate', False),
+            'image_det_auto_rotate': self.params.get('det_auto_rotate', False),
+            'image_det_invert': self.params.get('det_invert', False),
+            'image_det_gamma_correct': self.params.get('det_gamma_correct', False),
+            'image_unclip_ratio': self.params.get('unclip_ratio', 2.3),
+            'image_box_threshold': self.params.get('box_threshold', 0.7),
+            'image_text_threshold': self.params.get('text_threshold', 0.5),
+            'image_inpainting_size': self.params.get('inpainting_size', 2048),
+            'image_colorization_size': self.params.get('colorization_size', 576),
+            'image_denoise_sigma': self.params.get('denoise_sigma', 30),
+            'image_save_quality': self.params.get('save_quality', 85),
+            'image_save_file_type': self.params.get('format', "jpg"),
+            'text_min_text_length': self.params.get('min_text_length', 0),
+            'text_font_size': self.params.get('font_size', None),
+            'text_font_size_offset': self.params.get('font_size_offset', 0),
+            'text_font_size_minimum': self.params.get('font_size_minimum', -1),
+            'text_force_render_orientation': self.params.get('force_render_orientation', "auto"),
+            'text_alignment': self.params.get('alignment', "auto"),
+            'text_case': self.params.get('case', "sentence"),
+            'text_manga2eng': self.params.get('manga2eng', False),
+            'text_filter_text': self.params.get('filter_text', ''),
+            'text_gimp_font': self.params.get('gimp_font', "Sans-serif"),
+            'text_font_file': self.params.get('font_file', None),
+            'misc_overwrite': self.params.get('overwrite', False),
+            'image_ignore_bubble': self.params.get('ignore_bubble', 0),
+            'translator_gpt_config': self.params.get('gpt_config', None),
+            'text_font_color': self.params.get('font_color', ''),
+            'translator_threads': self.params.get('batch_concurrency', 1)
+        }
+        
+        if params['image_save_file_type'] == None:
+            params['image_save_file_type'] = "jpg"
+        
+        return params
+    
+    def process_image_sync(self, image_file=None, translator="offline", target_lang="ENG", image_detector="default", image_detection_size=2048, progress=gr.Progress()):
+        params = self.get_default_params()
+        params['image_file'] = image_file
+        params['translator'] = translator
+        params['target_lang'] = target_lang
+        params['image_detector'] = image_detector
+        params['image_detection_size'] = image_detection_size
+        params['progress'] = progress
+        print(params)
+        
+        return self.process_image_sync_plus(**params)
+    
+    def process_image_zip(self, image_zip_file=None, translator="offline", target_lang="ENG", image_detector="default", image_detection_size=2048, progress=gr.Progress()):
+        params = self.get_default_params()
+        params['image_zip_file'] = image_zip_file
+        params['translator'] = translator
+        params['target_lang'] = target_lang
+        params['image_detector'] = image_detector
+        params['image_detection_size'] = image_detection_size
+        params['progress'] = progress
+        print(params)
+        return self.process_image_zip_plus(**params)
         
     def fixBadZipfile(self, zipFile):  
         f = open(zipFile, 'r+b')  
@@ -1491,10 +1566,11 @@ class MangaTranslatorGradio(MangaTranslator):
         m.update(input_string.encode('utf-8'))
         return m.hexdigest()[-6:]
         
-    async def start(self):
+    async def start_plus(self):
         colorizer_list = ['None']
         colorizer_list.extend(COLORIZERS.keys())
         device_selected = [self.device]
+        image_detection_size_list = [1024, 1536, 2048, 2560, 3072, 3584, 4096]
         
         with gr.Blocks() as interface:
             gr.Markdown("Manga Image Translator")
@@ -1535,7 +1611,7 @@ class MangaTranslatorGradio(MangaTranslator):
                     image_inpainter = gr.inputs.Dropdown(list(INPAINTERS.keys()), label="Image Inpainter", default="default")
                     image_upscaler = gr.inputs.Dropdown(list(UPSCALERS.keys()), label="Image Upscaler", default="esrgan")
                     image_upscale_ratio = gr.inputs.Slider(minimum=0, maximum=32, step=1, label="Image Upscale Ratio", default=0)
-                    image_detection_size = gr.inputs.Slider(minimum=0, maximum=2560, step=1, label="Image Detection Size", default=2048)
+                    image_detection_size = gr.inputs.Dropdown(list(image_detection_size_list), label="Image Detection Size", default='2048')
                     image_revert_upscaling = gr.inputs.Checkbox(label="Revert Upscaling", default=False)
                 with gr.Row():
                     image_colorizer = gr.inputs.Dropdown(colorizer_list, label="Image Colorizer", default="None", optional=True)
@@ -1570,6 +1646,8 @@ class MangaTranslatorGradio(MangaTranslator):
                     text_manga2eng = gr.inputs.Checkbox(label="Manga2Eng", default=False)
                     text_filter_text = gr.inputs.Textbox(label="Filter Text", default=None)
                     text_gimp_font = gr.inputs.Textbox(label="GIMP Font", default="Sans-serif")
+                with gr.Row():
+                    text_font_color = gr.inputs.Textbox(label="Font Color(hex string without #)", default=None)
                 with gr.Row():
                     text_font_file = gr.inputs.File(label="Font Path", optional=True)
                     
@@ -1619,7 +1697,68 @@ class MangaTranslatorGradio(MangaTranslator):
                 misc_overwrite,
                 image_ignore_bubble,
                 translator_gpt_config,
+                text_font_color,
                 translator_threads
+            ]
+            
+            image_submit = [
+                image_file_input
+            ]
+            image_submit.extend(default_params)
+                        
+            image_zip_submit = [
+                image_zip_file_input,
+            ]
+            image_zip_submit.extend(default_params)
+            
+        
+            image_submit_button.click(self.process_image_sync_plus, inputs=image_submit,
+                outputs=[image_output_file, image_output_text])
+            image_zip_submit_button.click(self.process_image_zip_plus, inputs=image_zip_submit,
+                outputs=[image_zip_output_file, image_zip_output_text])
+        
+        interface.queue(concurrency_count=self.gradio_concurrency).launch(server_name=self.host, debug=True, share=self.share, server_port=self.port)
+        
+        
+    async def start(self):
+        image_detection_size_list = [1024, 1536, 2048, 2560, 3072, 3584, 4096]
+        with gr.Blocks() as interface:
+            gr.Markdown("Manga Image Translator")
+            with gr.Tab("Single"):
+                with gr.Row():
+                    with gr.Column(min_width=600):
+                        image_file_input = gr.inputs.File(label="Upload Image File")
+                        image_submit_button = gr.Button("Submit")
+                    with gr.Column(min_width=600):
+                        with gr.Row():
+                            image_output_file = gr.Image(label="Download Translated Image File")
+                        with gr.Row():
+                            image_output_text = gr.Textbox(label="Status", lines=2)
+            with gr.Tab("Batch/ZIP"):
+                with gr.Row():
+                    with gr.Column(min_width=600):
+                        image_zip_file_input = gr.inputs.File(type="file", label="Batch Image(Zip)")
+                        image_zip_submit_button = gr.Button("Submit")
+                    with gr.Column(min_width=600):
+                        with gr.Row():
+                            image_zip_output_file = gr.outputs.File(label="Download Zip File")
+                        with gr.Row():
+                            image_zip_output_text = gr.Textbox(label="Status", lines=2)
+                        
+            with gr.Column():
+                gr.Markdown("Options")
+                with gr.Row():
+                    translator_translator = gr.inputs.Dropdown(list(TRANSLATORS.keys()), label="Translator", default="offline")
+                    translator_target_lang = gr.inputs.Dropdown(list(VALID_LANGUAGES.keys()), label="Target Language", default="ENG")
+                    image_detector = gr.inputs.Dropdown(list(DETECTORS.keys()), label="Image Detector", default="default")
+                    image_detection_size = gr.inputs.Dropdown(list(image_detection_size_list), label="Image Detection Size", default='2048')
+           
+                    
+            default_params = [
+                translator_translator,
+                translator_target_lang,
+                image_detector,
+                image_detection_size
             ]
             
             image_submit = [
@@ -1638,4 +1777,4 @@ class MangaTranslatorGradio(MangaTranslator):
             image_zip_submit_button.click(self.process_image_zip, inputs=image_zip_submit,
                 outputs=[image_zip_output_file, image_zip_output_text])
         
-        interface.queue(concurrency_count=2).launch(server_name=self.host, debug=True, share=self.share, server_port=self.port)
+        interface.queue(concurrency_count=self.gradio_concurrency).launch(server_name=self.host, debug=True, share=self.share, server_port=self.port)

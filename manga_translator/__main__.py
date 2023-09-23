@@ -46,9 +46,12 @@ async def dispatch(args: Namespace):
         from .server.web_main import dispatch
         await dispatch(args.host, args.port, translation_params=args_dict)
         
-    elif args.mode == 'gradio':
+    elif args.mode == 'gradio' or args.mode == 'gradio_plus':
         translator = MangaTranslatorGradio(args_dict)
-        await translator.start()
+        if args.mode == 'gradio':
+            await translator.start()
+        else:
+            await translator.start_plus()
 
     elif args.mode == 'web_client':
         translator = MangaTranslatorWeb(args_dict)
