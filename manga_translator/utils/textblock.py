@@ -4,6 +4,7 @@ from typing import List, Tuple
 from shapely.geometry import Polygon, MultiPoint
 from functools import cached_property
 import copy
+import re
 
 from .generic import color_difference, is_right_to_left_char, count_valuable_text
 # from ..detection.ctd_utils.utils.imgproc_utils import union_area, xywh2xyxypoly
@@ -32,7 +33,7 @@ LANGAUGE_ORIENTATION_PRESETS = {
     'TRK': 'h',
     'UKR': 'h',
     'VIN': 'h',
-    'ARA': 'hr', # horizontal right to left
+    'ARA': 'hr', # horizontal reversed (right to left)
 }
 
 class TextBlock(object):
@@ -99,6 +100,7 @@ class TextBlock(object):
         self.default_stroke_width = default_stroke_width
         self.font_weight = font_weight
         self.accumulate_color = accumulate_color
+        self.adjust_bg_color = True
 
         self.opacity = opacity
         self.shadow_radius = shadow_radius
@@ -270,6 +272,29 @@ class TextBlock(object):
             text = ''.join(text_list)
         return text
 
+    @property
+    def is_bulleted_list(self):
+        """
+        A determining factor of whether we should be sticking to the strict per textline
+        text distribution when rendering.
+        """
+        if len(self.text) <= 1:
+            return False
+
+        bullet_regexes = [
+            r'[^\w\s]', # ○ ... ○ ...
+            r'[\d]+\.', # 1. ... 2. ...
+            r'[QA]:', # Q: ... A: ...
+        ]
+        bullet_type_idx = -1
+        for line_text in self.text:
+            for i, breg in enumerate(bullet_regexes):
+                if re.search(r'(?:[\n]|^)((?:' + breg + r')[\s]*)', line_text):
+                    if bullet_type_idx >= 0 and bullet_type_idx != i:
+                        return False
+                    bullet_type_idx = i
+        return bullet_type_idx >= 0
+
     def set_font_colors(self, fg_colors, bg_colors, accumulate=True):
         self.accumulate_color = accumulate
         num_lines = len(self.lines) if accumulate and len(self.lines) > 0 else 1
@@ -282,6 +307,7 @@ class TextBlock(object):
 
     def get_font_colors(self, bgr=False):
         num_lines = len(self.lines)
+
         frgb = np.array(self.fg_colors)
         brgb = np.array(self.bg_colors)
         if self.accumulate_color:
@@ -289,13 +315,18 @@ class TextBlock(object):
                 frgb = (frgb / num_lines).astype(np.int32)
                 brgb = (brgb / num_lines).astype(np.int32)
                 if bgr:
-                    return frgb[::-1], brgb[::-1]
+                    frgb, brgb = frgb[::-1], brgb[::-1]
                 else:
-                    return frgb, brgb
+                    frgb, brgb = frgb, brgb
             else:
                 return [0, 0, 0], [0, 0, 0]
-        else:
-            return frgb, brgb
+
+        if self.adjust_bg_color:
+            fg_avg = np.mean(frgb)
+            if color_difference(frgb, brgb) < 30:
+                brgb = (255, 255, 255) if fg_avg <= 127 else (0, 0, 0)
+
+        return frgb, brgb
 
     @property
     def direction(self):
