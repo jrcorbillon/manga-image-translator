@@ -1167,7 +1167,6 @@ class MangaTranslatorGradio(MangaTranslator):
     def run_in_event_loop(self, coroutine, *args, **kwargs):
         """This function runs the given coroutine in a new event loop."""
         loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
         return loop.run_until_complete(coroutine(*args, **kwargs))
        
     async def process_zip_file(self, zip_file, translator_params=None, progress=gr.Progress()):
