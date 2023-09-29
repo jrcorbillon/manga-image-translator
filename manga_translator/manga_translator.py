@@ -1577,7 +1577,7 @@ class MangaTranslatorGradio(MangaTranslator):
         colorizer_list = ['None']
         colorizer_list.extend(COLORIZERS.keys())
         device_selected = [self.device]
-        image_detection_size_list = [1024, 1536, 2048, 2560, 3072, 3584, 4096]
+        image_detection_size_list = ['1024', '1536', '2048', '2560', '3072', '3584', '4096']
         
         with gr.Blocks() as interface:
             gr.Markdown("Manga Image Translator")
@@ -1618,7 +1618,7 @@ class MangaTranslatorGradio(MangaTranslator):
                     image_inpainter = gr.inputs.Dropdown(list(INPAINTERS.keys()), label="Image Inpainter", default="default")
                     image_upscaler = gr.inputs.Dropdown(list(UPSCALERS.keys()), label="Image Upscaler", default="esrgan")
                     image_upscale_ratio = gr.inputs.Slider(minimum=0, maximum=32, step=1, label="Image Upscale Ratio", default=0)
-                    image_detection_size = gr.inputs.Dropdown(list(image_detection_size_list), label="Image Detection Size", default='2048')
+                    image_detection_size = gr.inputs.Dropdown(list(image_detection_size_list), label="Image Detection Size", default="2048")
                     image_revert_upscaling = gr.inputs.Checkbox(label="Revert Upscaling", default=False)
                 with gr.Row():
                     image_colorizer = gr.inputs.Dropdown(colorizer_list, label="Image Colorizer", default="None", optional=True)
@@ -1728,7 +1728,7 @@ class MangaTranslatorGradio(MangaTranslator):
         
         
     async def start(self):
-        image_detection_size_list = [1024, 1536, 2048, 2560, 3072, 3584, 4096]
+        image_detection_size_list = ['1024', '1536', '2048', '2560', '3072', '3584', '4096']
         with gr.Blocks() as interface:
             gr.Markdown("Manga Image Translator")
             with gr.Tab("Single"):
