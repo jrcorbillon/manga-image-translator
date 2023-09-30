@@ -43,5 +43,5 @@ aiofiles
 arabic-reshaper
 pyhyphen
 langcodes
-gradio
+gradio==3.42.0
 pytorch_lightning
