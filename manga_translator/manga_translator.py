@@ -1508,8 +1508,7 @@ class MangaTranslatorGradio(MangaTranslator):
         params['target_lang'] = target_lang
         params['image_detector'] = image_detector
         params['image_detection_size'] = image_detection_size
-        params['progress'] = progress
-        print(params)
+
         
         return self.process_image_sync_plus(**params)
     
@@ -1521,7 +1520,7 @@ class MangaTranslatorGradio(MangaTranslator):
         params['image_detector'] = image_detector
         params['image_detection_size'] = image_detection_size
         params['progress'] = progress
-        print(params)
+        
         return self.process_image_zip_plus(**params)
         
     def fixBadZipfile(self, zipFile):  
