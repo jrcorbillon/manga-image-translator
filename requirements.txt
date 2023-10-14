@@ -44,4 +44,5 @@ arabic-reshaper
 pyhyphen
 langcodes
 gradio==3.42.0
+litellm
 pytorch_lightning

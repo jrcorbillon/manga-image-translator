@@ -1,5 +1,6 @@
 import argparse
 import os
+from urllib.parse import unquote
 
 from .detection import DETECTORS
 from .ocr import OCRS
@@ -9,11 +10,17 @@ from .upscaling import UPSCALERS
 from .colorization import COLORIZERS
 from .save import OUTPUT_FORMATS
 
+def url_decode(s):
+    s = unquote(s)
+    if s.startswith('file:///'):
+        s = s[len('file://'):]
+    return s
+
 # Additional argparse types
 def path(string):
     if not string:
         return ''
-    s = os.path.expanduser(string)
+    s = url_decode(os.path.expanduser(string))
     if not os.path.exists(s):
         raise argparse.ArgumentTypeError(f'No such file or directory: "{string}"')
     return s
@@ -21,7 +28,7 @@ def path(string):
 def file_path(string):
     if not string:
         return ''
-    s = os.path.expanduser(string)
+    s = url_decode(os.path.expanduser(string))
     if not os.path.exists(s):
         raise argparse.ArgumentTypeError(f'No such file: "{string}"')
     return s
@@ -29,7 +36,7 @@ def file_path(string):
 def dir_path(string):
     if not string:
         return ''
-    s = os.path.expanduser(string)
+    s = url_decode(os.path.expanduser(string))
     if not os.path.exists(s):
         raise argparse.ArgumentTypeError(f'No such directory: "{string}"')
     return s
@@ -80,7 +87,7 @@ class HelpFormatter(argparse.HelpFormatter):
 
 
 parser = argparse.ArgumentParser(prog='manga_translator', description='Seamlessly translate mangas into a chosen language', formatter_class=HelpFormatter)
-parser.add_argument('-m', '--mode', default='demo', type=str, choices=['demo', 'batch', 'web', 'web_client', 'ws', 'api', 'gradio', 'gradio_plus'], help='Run demo in single image demo mode (demo), batch translation mode (batch), web service mode (web), web mode advanced (gradio)')
+parser.add_argument('-m', '--mode', default='batch', type=str, choices=['demo', 'batch', 'web', 'web_client', 'ws', 'api', 'gradio', 'gradio_plus'], help='Run demo in single image demo mode (demo), batch translation mode (batch), web service mode (web), web mode advanced (gradio)')
 parser.add_argument('-i', '--input', default=None, type=path, nargs='+', help='Path to an image file if using demo mode, or path to an image folder if using batch mode')
 parser.add_argument('-o', '--dest', default='', type=str, help='Path to the destination folder for translated images in batch mode')
 parser.add_argument('-l', '--target-lang', default='CHS', type=str, choices=VALID_LANGUAGES, help='Destination language')
