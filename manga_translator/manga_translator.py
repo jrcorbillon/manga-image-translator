@@ -1229,7 +1229,8 @@ class MangaTranslatorGradio(MangaTranslator):
             # Create a new zip file
             # create path for zip file
             # os.makedirs(os.path.join(BASE_PATH, 'result', zip_file_name), exist_ok=True)
-            with zipfile.ZipFile(os.path.join(BASE_PATH, 'result', zip_file_name, f'{zip_file_name}-{params_hash}-translated.zip'), 'w') as zip_file:
+            output_zip_file_name = os.path.join(BASE_PATH, 'result', f'{zip_file_name}-{params_hash}-translated.zip')
+            with zipfile.ZipFile(output_zip_file_name, 'w') as zip_file:
                 # Add the translated text file to the zip file
                 for file in progress.tqdm(output_files, desc="Creating Zip File", unit="files"):
                     if file["data"] is not None:
@@ -1237,7 +1238,7 @@ class MangaTranslatorGradio(MangaTranslator):
                     else:
                         arcname = os.path.basename(file["name"])
                         zip_file.write(file["name"], arcname)
-            return output_text, os.path.join(BASE_PATH, 'result', zip_file_name, f'{zip_file_name}-{params_hash}-translated.zip')
+            return output_text, output_zip_file_name
         
         except BadZipFile:
             raise ValueError("The provided file is not a valid zip file. Please upload a valid zip file containing image files.")
