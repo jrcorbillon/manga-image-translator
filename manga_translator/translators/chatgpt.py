@@ -1,8 +1,9 @@
 import re
-import openai
-import requests
-import litellm
-import litellm.exceptions
+try:
+    import openai
+    import openai.error
+except ImportError:
+    openai = None
 import asyncio
 import time
 from typing import List, Dict
@@ -37,7 +38,8 @@ class GPT3Translator(CommonTranslator):
         'SRP': 'Serbian',
         'HRV': 'Croatian',
         'ARA': 'Arabic',
-        'THA': 'Thai'
+        'THA': 'Thai',
+        'IND': 'Indonesian'
     }
     _INVALID_REPEAT_COUNT = 2 # repeat up to 2 times if "invalid" translation was detected
     _MAX_REQUESTS_PER_MINUTE = 20
@@ -54,25 +56,27 @@ class GPT3Translator(CommonTranslator):
 
     def __init__(self):
         super().__init__()
-        litellm.api_key = OPENAI_API_KEY
-        litellm.api_base = OPENAI_API_BASE
-        if not litellm.api_key:
+        openai.api_key = openai.api_key or OPENAI_API_KEY
+        openai.api_base = OPENAI_API_BASE
+        if not openai.api_key:
             raise MissingAPIKeyException('Please set the OPENAI_API_KEY environment variable before using the chatgpt translator.')
         if OPENAI_HTTP_PROXY:
-            session = requests.session()
-            session.proxies = {
+            proxies = {
                 'http': 'http://%s' % OPENAI_HTTP_PROXY,
                 'https': 'http://%s' % OPENAI_HTTP_PROXY
             }
-            litellm.client_session = session
+            openai.proxy = proxies
         self.token_count = 0
         self.token_count_last = 0
+        self.config = None
+
+    def parse_args(self, args):
+        self.config = args.gpt_config
 
     def _config_get(self, key: str, default=None):
-        global CONFIG
-        if CONFIG is None:
+        if not self.config:
             return default
-        return CONFIG.get(self._CONFIG_KEY + '.' + key, CONFIG.get(key, default))
+        return self.config.get(self._CONFIG_KEY + '.' + key, self.config.get(key, default))
 
     @property
     def prompt_template(self) -> str:
@@ -146,13 +150,13 @@ class GPT3Translator(CommonTranslator):
                 try:
                     response = await request_task
                     break
-                except litellm.exceptions.RateLimitError: # Server returned ratelimit response
+                except openai.error.RateLimitError: # Server returned ratelimit response
                     ratelimit_attempt += 1
                     if ratelimit_attempt >= self._RATELIMIT_RETRY_ATTEMPTS:
                         raise
                     self.logger.warn(f'Restarting request due to ratelimiting by openai servers. Attempt: {ratelimit_attempt}')
                     await asyncio.sleep(2)
-                except litellm.exceptions.APIError: # Server returned 500 error (probably server load)
+                except openai.error.APIError: # Server returned 500 error (probably server load)
                     server_error_attempt += 1
                     if server_error_attempt >= self._RETRY_ATTEMPTS:
                         self.logger.error('OpenAI encountered a server error, possibly due to high server load. Use a different translator or try again later.')
@@ -174,7 +178,7 @@ class GPT3Translator(CommonTranslator):
         return translations
 
     async def _request_translation(self, to_lang: str, prompt: str) -> str:
-        response = await litellm.acompletion(
+        response = await openai.Completion.acreate(
             model='text-davinci-003',
             prompt=prompt,
             max_tokens=self._MAX_TOKENS // 2, # Assuming that half of the tokens are used for the query
@@ -256,7 +260,7 @@ class GPT35TurboTranslator(GPT3Translator):
             messages.insert(1, {'role': 'user', 'content': self.chat_sample[to_lang][0]})
             messages.insert(2, {'role': 'assistant', 'content': self.chat_sample[to_lang][1]})
 
-        response = await litellm.acompletion(
+        response = await openai.ChatCompletion.acreate(
             model='gpt-3.5-turbo-0613',
             messages=messages,
             max_tokens=self._MAX_TOKENS // 2,
@@ -281,7 +285,7 @@ class GPT4Translator(GPT35TurboTranslator):
 
     async def _request_translation(self, to_lang: str, prompt: str) -> str:
         messages = [
-            {'role': 'system', 'content': self._CHAT_SYSTEM_TEMPLATE.format(to_lang=to_lang)},
+            {'role': 'system', 'content': self.chat_system_template.format(to_lang=to_lang)},
             {'role': 'user', 'content': prompt},
         ]
 
@@ -289,7 +293,7 @@ class GPT4Translator(GPT35TurboTranslator):
             messages.insert(1, {'role': 'user', 'content': self._CHAT_SAMPLE[to_lang][0]})
             messages.insert(2, {'role': 'assistant', 'content': self._CHAT_SAMPLE[to_lang][1]})
 
-        response = await litellm.acompletion(
+        response = await openai.ChatCompletion.acreate(
             model='gpt-4-0613',
             messages=messages,
             max_tokens=self._MAX_TOKENS // 2,

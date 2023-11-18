@@ -53,9 +53,10 @@ class Model48pxCTCOCR(OfflineOCR):
     async def _unload(self):
         del self.model
 
-    async def _infer(self, image: np.ndarray, textlines: List[Quadrilateral], verbose: bool = False, ignore_bubble: int = 0) -> List[TextBlock]:
+    async def _infer(self, image: np.ndarray, textlines: List[Quadrilateral], args: dict, verbose: bool = False) -> List[TextBlock]:
         text_height = 48
         max_chunk_size = 16
+        ignore_bubble = args.get('ignore_bubble', 0)
 
         quadrilaterals = list(self._generate_text_direction(textlines))
         region_imgs = [q.get_transformed_region(image, d, text_height) for q, d in quadrilaterals]
@@ -79,7 +80,7 @@ class Model48pxCTCOCR(OfflineOCR):
                 W = region_imgs[idx].shape[1]
                 tmp = region_imgs[idx]
                 # Determine whether to skip the text block, and return True to skip.
-                if  ignore_bubble >=1 and ignore_bubble <=50 and is_ignore(region_imgs[idx], ignore_bubble):
+                if ignore_bubble >=1 and ignore_bubble <=50 and is_ignore(region_imgs[idx], ignore_bubble):
                     ix+=1
                     continue
                 region[i, :, : W, :]=tmp
@@ -143,8 +144,7 @@ class Model48pxCTCOCR(OfflineOCR):
                     cur_region.bg_b = bb
                 else:
                     cur_region.text.append(txt)
-                    cur_region.fg_colors += np.array([fr, fg, fb])
-                    cur_region.bg_colors += np.array([br, bg, bb])
+                    cur_region.update_font_colors(np.array([fr, fg, fb]), np.array([br, bg, bb]))
 
                 out_regions.append(cur_region)
 

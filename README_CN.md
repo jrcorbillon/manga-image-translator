@@ -114,16 +114,24 @@ THA: Thai
                                              image folder if using batch mode
 -o, --dest DEST                              Path to the destination folder for translated images in
                                              batch mode
--l, --target-lang {CHS,CHT,CSY,NLD,ENG,FRA,DEU,HUN,ITA,JPN,KOR,PLK,PTB,ROM,RUS,ESP,TRK,UKR,VIN,ARA,CNR,SRP,HRV,THA}
+-l, --target-lang {CHS,CHT,CSY,NLD,ENG,FRA,DEU,HUN,ITA,JPN,KOR,PLK,PTB,ROM,RUS,ESP,TRK,UKR,VIN,ARA,CNR,SRP,HRV,THA,IND}
                                              Destination language
 -v, --verbose                                Print debug info and save intermediate images in result
                                              folder
 -f, --format {png,webp,jpg,xcf,psd,pdf}      Output format of the translation.
+--attempts ATTEMPTS                          Retry attempts on encountered error. -1 means infinite
+                                             times.
+--ignore-errors                              Skip image on encountered error.
+--overwrite                                  Overwrite already translated images in batch mode.
+--skip-no-text                               Skip image without text (Will not be saved).
+--model-dir MODEL_DIR                        Model directory (by default ./models in project root)
+--use-cuda                                   Turn on/off cuda
+--use-cuda-limited                           Turn on/off cuda (excluding offline translator)
 --detector {default,ctd,craft,none}          Text detector used for creating a text mask from an
                                              image, DO NOT use craft for manga, it's not designed
                                              for it
---ocr {32px,48px_ctc}                        Optical character recognition (OCR) model to use
---inpainter {default,lama_mpe,sd,none,original}
+--ocr {48px,32px,48px_ctc}                   Optical character recognition (OCR) model to use
+--inpainter {default,lama_large,lama_mpe,sd,none,original}
                                              Inpainting model to use
 --upscaler {waifu2x,esrgan,4xultrasharp}     Upscaler to use. --upscale-ratio has to be set for it
                                              to take effect
@@ -139,13 +147,6 @@ THA: Thai
                                              image. Note the first translation service acts as
                                              default if the language isnt defined. Example:
                                              --translator-chain "google:JPN;sugoi:ENG".
---use-cuda                                   Turn on/off cuda
---use-cuda-limited                           Turn on/off cuda (excluding offline translator)
---model-dir MODEL_DIR                        Model directory (by default ./models in project root)
---attempts ATTEMPTS                          Retry attempts on encountered error. -1 means infinite
-                                             times.
---ignore-errors                              Skip image on encountered error.
---overwrite                                  Overwrite already translated images in batch mode.
 --revert-upscaling                           Downscales the previously upscaled image after
                                              translation back to original size (Use with --upscale-
                                              ratio).
@@ -164,17 +165,25 @@ THA: Thai
 --min-text-length MIN_TEXT_LENGTH            Minimum text length of a text region
 --inpainting-size INPAINTING_SIZE            Size of image used for inpainting (too large will
                                              result in OOM)
+--inpainting-precision INPAINTING_PRECISION  Inpainting precision for lama, 
+                                             use bf16 while you can.
 --colorization-size COLORIZATION_SIZE        Size of image used for colorization. Set to -1 to use
                                              full image size
 --denoise-sigma DENOISE_SIGMA                Used by colorizer and affects color strength, range
                                              from 0 to 255 (default 30). -1 turns it off.
+--mask-dilation-offset MASK_DILATION_OFFSET  By how much to extend the text mask to remove left-over
+                                             text pixels of the original image.
 --font-size FONT_SIZE                        Use fixed font size for rendering
 --font-size-offset FONT_SIZE_OFFSET          Offset font size by a given amount, positive number
                                              increase font size and vice versa
 --font-size-minimum FONT_SIZE_MINIMUM        Minimum output font size. Default is
                                              image_sides_sum/200
---font-color FONT_COLOR                      Overwrite the text color detected by the OCR model. Use
-                                             hex string without the "#" such as FFFFFF for white.
+--font-color FONT_COLOR                      Overwrite the text fg/bg color detected by the OCR
+                                             model. Use hex string without the "#" such as FFFFFF
+                                             for a white foreground or FFFFFF:000000 to also have a
+                                             black background around the text.
+--line-spacing LINE_SPACING                  Line spacing is font_size * this value. Default is 0.01
+                                             for horizontal text and 0.2 for vertical.
 --force-horizontal                           Force text to be rendered horizontally
 --force-vertical                             Force text to be rendered vertically
 --align-left                                 Align rendered text left
@@ -188,7 +197,7 @@ THA: Thai
                                              additional typesetting. Ignores some other argument
                                              options
 --gpt-config GPT_CONFIG                      Path to GPT config file, more info in README
---mtpe                                       Turn on/off machine translation post editing (MTPE) on
+--use-mtpe                                   Turn on/off machine translation post editing (MTPE) on
                                              the command line (works only on linux right now)
 --save-text                                  Save extracted text and translations into a text file.
 --save-text-file SAVE_TEXT_FILE              Like --save-text but with a specified file path.

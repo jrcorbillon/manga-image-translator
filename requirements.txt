@@ -8,7 +8,8 @@ opencv-python
 pyclipper
 shapely
 requests
-oscrypto 
+git+https://github.com/wbond/oscrypto
+cryptography
 freetype-py
 googletrans-py
 aiohttp
@@ -28,7 +29,7 @@ websockets
 protobuf
 ctranslate2
 colorama
-openai
+openai==0.28
 open_clip_torch
 safetensors
 pandas
