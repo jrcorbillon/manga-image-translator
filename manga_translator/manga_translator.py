@@ -1768,7 +1768,7 @@ class MangaTranslatorGradio(MangaTranslator):
                     image_detector = gr.inputs.Dropdown(list(DETECTORS.keys()), label="Image Detector", default="default")
                     image_inpainter = gr.inputs.Dropdown(list(INPAINTERS.keys()), label="Image Inpainter", default="default")
                     image_upscaler = gr.inputs.Dropdown(list(UPSCALERS.keys()), label="Image Upscaler", default="esrgan")
-                    image_upscale_ratio = gr.inputs.Slider(minimum=0, maximum=32, step=1, label="Image Upscale Ratio", default=0)
+                    image_upscale_ratio = gr.inputs.Slider(minimum=0, maximum=32, step=0.1, label="Image Upscale Ratio", default=0)
                     image_detection_size = gr.inputs.Dropdown(list(image_detection_size_list), label="Image Detection Size", default="2048")
                     image_revert_upscaling = gr.inputs.Checkbox(label="Revert Upscaling", default=False)
                 with gr.Row():
