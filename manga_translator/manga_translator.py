@@ -1735,7 +1735,7 @@ class MangaTranslatorGradio(MangaTranslator):
             with gr.Tab("Single"):
                 with gr.Row():
                     with gr.Column(min_width=600):
-                        image_file_input = gr.inputs.File(label="Upload Image File")
+                        image_file_input = gr.File(type="filepath", label="Upload Image File")
                         image_submit_button = gr.Button("Submit")
                     with gr.Column(min_width=600):
                         with gr.Row():
@@ -1745,76 +1745,76 @@ class MangaTranslatorGradio(MangaTranslator):
             with gr.Tab("Batch/ZIP"):
                 with gr.Row():
                     with gr.Column(min_width=600):
-                        image_zip_file_input = gr.inputs.File(type="file", label="Batch Image(Zip)")
+                        image_zip_file_input = gr.File(type="filepath", label="Batch Image(Zip)")
                         image_zip_submit_button = gr.Button("Submit")
                     with gr.Column(min_width=600):
                         with gr.Row():
-                            image_zip_output_file = gr.outputs.File(label="Download Zip File")
+                            image_zip_output_file = gr.File(label="Download Zip File")
                         with gr.Row():
                             image_zip_output_text = gr.Textbox(label="Status", lines=2)
                         
             with gr.Column():
                 gr.Markdown("Translator Settings")
                 with gr.Row():
-                    translator_translator = gr.inputs.Dropdown(list(TRANSLATORS.keys()), label="Translator", default="offline")
-                    translator_gpt_config = gr.File(label="GPT Config (Optional for GPT Translator)", optional=True)
-                    translator_target_lang = gr.inputs.Dropdown(list(VALID_LANGUAGES.keys()), label="Target Language", default="ENG")
-                    translator_device = gr.inputs.Radio(list(device_selected), label="Device", default=self.device)
-                    translator_threads = gr.inputs.Slider(minimum=1, maximum=10, step=1, label="Threads", default=1)
+                    translator_translator = gr.Dropdown(list(TRANSLATORS.keys()), label="Translator", value="offline")
+                    translator_gpt_config = gr.File(label="GPT Config (Optional for GPT Translator)", type="filepath")
+                    translator_target_lang = gr.Dropdown(list(VALID_LANGUAGES.keys()), label="Target Language", value="ENG")
+                    translator_device = gr.Radio(list(device_selected), label="Device", value=self.device)
+                    translator_threads = gr.Slider(minimum=1, maximum=10, step=1, label="Threads", value=1)
                         
             with gr.Column():
                 gr.Markdown("Image Settings")
                 with gr.Row():
-                    image_detector = gr.inputs.Dropdown(list(DETECTORS.keys()), label="Image Detector", default="default")
-                    image_inpainter = gr.inputs.Dropdown(list(INPAINTERS.keys()), label="Image Inpainter", default="default")
-                    image_upscaler = gr.inputs.Dropdown(list(UPSCALERS.keys()), label="Image Upscaler", default="esrgan")
-                    image_upscale_ratio = gr.inputs.Slider(minimum=0, maximum=32, step=0.1, label="Image Upscale Ratio", default=0)
-                    image_detection_size = gr.inputs.Dropdown(list(image_detection_size_list), label="Image Detection Size", default="2048")
-                    image_revert_upscaling = gr.inputs.Checkbox(label="Revert Upscaling", default=False)
+                    image_detector = gr.Dropdown(list(DETECTORS.keys()), label="Image Detector", value="default")
+                    image_inpainter = gr.Dropdown(list(INPAINTERS.keys()), label="Image Inpainter", value="default")
+                    image_upscaler = gr.Dropdown(list(UPSCALERS.keys()), label="Image Upscaler", value="esrgan")
+                    image_upscale_ratio = gr.Slider(minimum=0, maximum=32, step=0.1, label="Image Upscale Ratio", value=0)
+                    image_detection_size = gr.Dropdown(list(image_detection_size_list), label="Image Detection Size", value="2048")
+                    image_revert_upscaling = gr.Checkbox(label="Revert Upscaling", value=False)
                 with gr.Row():
-                    image_colorizer = gr.inputs.Dropdown(colorizer_list, label="Image Colorizer", default="None", optional=True)
-                    image_det_rotate = gr.inputs.Checkbox(label="Rotate", default=False)
-                    image_det_auto_rotate = gr.inputs.Checkbox(label="Auto Rotate", default=False)
-                    image_det_invert = gr.inputs.Checkbox(label="Invert", default=False)
-                    image_det_gamma_correct = gr.inputs.Checkbox(label="Gamma Correct", default=False)
+                    image_colorizer = gr.Dropdown(colorizer_list, label="Image Colorizer", value="None")
+                    image_det_rotate = gr.Checkbox(label="Rotate", value=False)
+                    image_det_auto_rotate = gr.Checkbox(label="Auto Rotate", value=False)
+                    image_det_invert = gr.Checkbox(label="Invert", value=False)
+                    image_det_gamma_correct = gr.Checkbox(label="Gamma Correct", value=False)
                 with gr.Row():
-                    image_unclip_ratio = gr.inputs.Slider(minimum=0.1, maximum=20, step=0.01, label="Unclip Ratio", default=2.3)
-                    image_box_threshold = gr.inputs.Slider(minimum=0.1, maximum=5, step=0.01, label="Box Threshold", default=0.7)
-                    image_text_threshold = gr.inputs.Slider(minimum=0.1, maximum=5, step=0.01, label="Text Threshold", default=0.5)
-                    image_inpainting_size = gr.inputs.Slider(minimum=0, maximum=4096, step=1, label="Inpainting Size", default=2048)
-                    image_colorization_size = gr.inputs.Slider(minimum=-1, maximum=4096, step=1, label="Colorization Size", default=576)
+                    image_unclip_ratio = gr.Slider(minimum=0.1, maximum=20, step=0.01, label="Unclip Ratio", value=2.3)
+                    image_box_threshold = gr.Slider(minimum=0.1, maximum=5, step=0.01, label="Box Threshold", value=0.7)
+                    image_text_threshold = gr.Slider(minimum=0.1, maximum=5, step=0.01, label="Text Threshold", value=0.5)
+                    image_inpainting_size = gr.Slider(minimum=0, maximum=4096, step=1, label="Inpainting Size", value=2048)
+                    image_colorization_size = gr.Slider(minimum=-1, maximum=4096, step=1, label="Colorization Size", value=576)
                     
                 with gr.Row():
-                    image_ignore_bubble = gr.inputs.Slider(minimum=0, maximum=50, step=1, label="Ignore Bubble", default=0)
-                    image_denoise_sigma = gr.inputs.Slider(minimum=0, maximum=100, step=0.1, label="Denoise Sigma", default=30)
-                    image_save_quality = gr.inputs.Slider(minimum=0, maximum=100, step=1, label="Save Quality", default=85)
-                    image_save_file_type = gr.inputs.Dropdown(["jpg", "png", "webp"], label="Save File Type", default="jpg")
+                    image_ignore_bubble = gr.Slider(minimum=0, maximum=50, step=1, label="Ignore Bubble", value=0)
+                    image_denoise_sigma = gr.Slider(minimum=0, maximum=100, step=0.1, label="Denoise Sigma", value=30)
+                    image_save_quality = gr.Slider(minimum=0, maximum=100, step=1, label="Save Quality", value=85)
+                    image_save_file_type = gr.Dropdown(["jpg", "png", "webp"], label="Save File Type", value="jpg")
                     
             with gr.Column():
                 gr.Markdown("Text Settings")
                 with gr.Row():
-                    text_min_text_length = gr.inputs.Slider(minimum=0, maximum=100, step=1, label="Min Text Length", default=0)
-                    text_font_size = gr.inputs.Slider(minimum=0, maximum=100, step=1, label="Font Size", default=None)
-                    text_font_size_offset = gr.inputs.Slider(minimum=0, maximum=100, step=1, label="Font Size Offset", default=0)
-                    text_font_size_minimum = gr.inputs.Slider(minimum=-1, maximum=100, step=1, label="Font Size Minimum", default=-1)
-                    text_force_render_orientation = gr.inputs.Dropdown(["auto", "horizontal", "vertical"], label="Force Render Text Orientation", default="auto")
+                    text_min_text_length = gr.Slider(minimum=0, maximum=100, step=1, label="Min Text Length", value=0)
+                    text_font_size = gr.Slider(minimum=0, maximum=100, step=1, label="Font Size", value=None)
+                    text_font_size_offset = gr.Slider(minimum=0, maximum=100, step=1, label="Font Size Offset", value=0)
+                    text_font_size_minimum = gr.Slider(minimum=-1, maximum=100, step=1, label="Font Size Minimum", value=-1)
+                    text_force_render_orientation = gr.Dropdown(["auto", "horizontal", "vertical"], label="Force Render Text Orientation", value="auto")
                 with gr.Row():
-                    text_alignment = gr.inputs.Dropdown(["auto", "left", "center", "right"], label="Text Alignment", default="auto")
-                    text_case = gr.inputs.Dropdown(["sentence", "uppercase", "lowercase"], label="Text Case", default="sentence")
-                    text_manga2eng = gr.inputs.Checkbox(label="Manga2Eng", default=False)
-                    text_filter_text = gr.inputs.Textbox(label="Filter Text", default=None)
-                    text_gimp_font = gr.inputs.Textbox(label="GIMP Font", default="Sans-serif")
+                    text_alignment = gr.Dropdown(["auto", "left", "center", "right"], label="Text Alignment", value="auto")
+                    text_case = gr.Dropdown(["sentence", "uppercase", "lowercase"], label="Text Case", value="sentence")
+                    text_manga2eng = gr.Checkbox(label="Manga2Eng", value=False)
+                    text_filter_text = gr.Textbox(label="Filter Text", value=None)
+                    text_gimp_font = gr.Textbox(label="GIMP Font", value="Sans-serif")
                 with gr.Row():
-                    text_font_color = gr.inputs.Textbox(label="Font Color(hex string without #)", default=None)
+                    text_font_color = gr.Textbox(label="Font Color(hex string without #)", value=None)
                 with gr.Row():
-                    text_font_file = gr.inputs.File(label="Font Path", optional=True)
+                    text_font_file = gr.File(label="Font Path", type="filepath")
                     
             with gr.Column():
                 gr.Markdown("Misc")
                 with gr.Row():
-                    misc_attempts = gr.inputs.Slider(minimum=0, maximum=10, step=1, label="Attempts", default=0)
-                    misc_skip_error = gr.inputs.Checkbox(label="Skip Error", default=False)
-                    misc_overwrite = gr.inputs.Checkbox(label="Overwrite", default=False)
+                    misc_attempts = gr.Slider(minimum=0, maximum=10, step=1, label="Attempts", value=0)
+                    misc_skip_error = gr.Checkbox(label="Skip Error", value=False)
+                    misc_overwrite = gr.Checkbox(label="Overwrite", value=False)
                     
             default_params = [
                 translator_translator,
@@ -1871,11 +1871,13 @@ class MangaTranslatorGradio(MangaTranslator):
             
         
             image_submit_button.click(self.process_image_sync_plus, inputs=image_submit,
-                outputs=[image_output_file, image_output_text])
+                outputs=[image_output_file, image_output_text],
+                concurrency_limit=self.gradio_concurrency)
             image_zip_submit_button.click(self.process_image_zip_plus, inputs=image_zip_submit,
-                outputs=[image_zip_output_file, image_zip_output_text])
+                outputs=[image_zip_output_file, image_zip_output_text],
+                concurrency_limit=self.gradio_concurrency)
         
-        interface.queue(concurrency_count=self.gradio_concurrency).launch(server_name=self.host, debug=True, share=self.share, server_port=self.port)
+        interface.queue().launch(server_name=self.host, debug=True, share=self.share, server_port=self.port)
         
         
     async def start(self):
@@ -1885,7 +1887,7 @@ class MangaTranslatorGradio(MangaTranslator):
             with gr.Tab("Single"):
                 with gr.Row():
                     with gr.Column(min_width=600):
-                        image_file_input = gr.inputs.File(label="Upload Image File")
+                        image_file_input = gr.File(label="Upload Image File", type="filepath")
                         image_submit_button = gr.Button("Submit")
                     with gr.Column(min_width=600):
                         with gr.Row():
@@ -1895,21 +1897,21 @@ class MangaTranslatorGradio(MangaTranslator):
             with gr.Tab("Batch/ZIP"):
                 with gr.Row():
                     with gr.Column(min_width=600):
-                        image_zip_file_input = gr.inputs.File(type="file", label="Batch Image(Zip)")
+                        image_zip_file_input = gr.File(type="filepath", label="Batch Image(Zip)",)
                         image_zip_submit_button = gr.Button("Submit")
                     with gr.Column(min_width=600):
                         with gr.Row():
-                            image_zip_output_file = gr.outputs.File(label="Download Zip File")
+                            image_zip_output_file = gr.File(label="Download Zip File")
                         with gr.Row():
                             image_zip_output_text = gr.Textbox(label="Status", lines=2)
                         
             with gr.Column():
                 gr.Markdown("Options")
                 with gr.Row():
-                    translator_translator = gr.inputs.Dropdown(list(TRANSLATORS.keys()), label="Translator", default="offline")
-                    translator_target_lang = gr.inputs.Dropdown(list(VALID_LANGUAGES.keys()), label="Target Language", default="ENG")
-                    image_detector = gr.inputs.Dropdown(list(DETECTORS.keys()), label="Image Detector", default="default")
-                    image_detection_size = gr.inputs.Dropdown(list(image_detection_size_list), label="Image Detection Size", default='2048')
+                    translator_translator = gr.Dropdown(list(TRANSLATORS.keys()), label="Translator", value="offline")
+                    translator_target_lang = gr.Dropdown(list(VALID_LANGUAGES.keys()), label="Target Language", value="ENG")
+                    image_detector = gr.Dropdown(list(DETECTORS.keys()), label="Image Detector", value="default")
+                    image_detection_size = gr.Dropdown(list(image_detection_size_list), label="Image Detection Size", value='2048')
            
                     
             default_params = [
@@ -1931,8 +1933,10 @@ class MangaTranslatorGradio(MangaTranslator):
             
         
             image_submit_button.click(self.process_image_sync, inputs=image_submit,
-                outputs=[image_output_file, image_output_text])
+                outputs=[image_output_file, image_output_text],
+                concurrency_limit=self.gradio_concurrency)
             image_zip_submit_button.click(self.process_image_zip, inputs=image_zip_submit,
-                outputs=[image_zip_output_file, image_zip_output_text])
+                outputs=[image_zip_output_file, image_zip_output_text],
+                concurrency_limit=self.gradio_concurrency)
         
-        interface.queue(concurrency_count=self.gradio_concurrency).launch(server_name=self.host, debug=True, share=self.share, server_port=self.port)
+        interface.queue().launch(server_name=self.host, debug=True, share=self.share, server_port=self.port)
