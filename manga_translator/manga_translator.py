@@ -1415,7 +1415,7 @@ class MangaTranslatorGradio(MangaTranslator):
                            text_alignment="auto", text_case="sentence", text_manga2eng=False,
                            text_filter_text='', text_gimp_font="Sans-serif", text_font_file=None,
                            misc_overwrite=False, image_ignore_bubble=0, translator_gpt_config=None,
-                           text_font_color='',
+                           text_font_color='', image_inpainting_precision="fp32",
                            translator_threads=1
                            ):
         image_detection_size = int(image_detection_size)
@@ -1452,6 +1452,7 @@ class MangaTranslatorGradio(MangaTranslator):
             'overwrite': misc_overwrite,
             'ignore_bubble': image_ignore_bubble,
             'font_color': text_font_color,
+            'inpainting_precision': image_inpainting_precision,
         }
         
         if text_font_size is not None and text_font_size > 0:
@@ -1515,7 +1516,7 @@ class MangaTranslatorGradio(MangaTranslator):
                           text_alignment="auto", text_case="sentence", text_manga2eng=False,
                           text_filter_text='', text_gimp_font="Sans-serif", text_font_file=None,
                           misc_overwrite=False, image_ignore_bubble=0, translator_gpt_config=None,
-                          text_font_color='',
+                          text_font_color='', image_inpainting_precision="fp32",
                           translator_threads=1,
                           progress=gr.Progress()):
         image_detection_size = int(image_detection_size)
@@ -1552,7 +1553,8 @@ class MangaTranslatorGradio(MangaTranslator):
                 'gimp_font': text_gimp_font,
                 'overwrite': misc_overwrite,
                 'ignore_bubble': image_ignore_bubble,
-                'font_color': text_font_color
+                'font_color': text_font_color,
+                'inpainting_precision': image_inpainting_precision,
             }
                         
             if text_font_size is not None and text_font_size > 0:
@@ -1645,7 +1647,8 @@ class MangaTranslatorGradio(MangaTranslator):
             'image_ignore_bubble': self.params.get('ignore_bubble', 0),
             'translator_gpt_config': self.params.get('gpt_config', None),
             'text_font_color': self.params.get('font_color', ''),
-            'translator_threads': self.params.get('batch_concurrency', 1)
+            'translator_threads': self.params.get('batch_concurrency', 1),
+            'inpainting-precision': self.params.get('inpainting_precision', 'fp32'),
         }
         
         if params['image_save_file_type'] == None:
@@ -1781,8 +1784,9 @@ class MangaTranslatorGradio(MangaTranslator):
                     image_unclip_ratio = gr.Slider(minimum=0.1, maximum=20, step=0.01, label="Unclip Ratio", value=2.3)
                     image_box_threshold = gr.Slider(minimum=0.1, maximum=5, step=0.01, label="Box Threshold", value=0.7)
                     image_text_threshold = gr.Slider(minimum=0.1, maximum=5, step=0.01, label="Text Threshold", value=0.5)
-                    image_inpainting_size = gr.Slider(minimum=0, maximum=4096, step=1, label="Inpainting Size", value=2048)
                     image_colorization_size = gr.Slider(minimum=-1, maximum=4096, step=1, label="Colorization Size", value=576)
+                    image_inpainting_size = gr.Slider(minimum=0, maximum=4096, step=1, label="Inpainting Size", value=2048)
+                    image_inpainting_precision = gr.Dropdown(["fp32", "fp16", "bf16"], label="Inpainting Precision", value="fp32")
                     
                 with gr.Row():
                     image_ignore_bubble = gr.Slider(minimum=0, maximum=50, step=1, label="Ignore Bubble", value=0)
@@ -1856,7 +1860,8 @@ class MangaTranslatorGradio(MangaTranslator):
                 image_ignore_bubble,
                 translator_gpt_config,
                 text_font_color,
-                translator_threads
+                image_inpainting_precision,
+                translator_threads,
             ]
             
             image_submit = [
