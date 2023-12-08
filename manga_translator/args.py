@@ -42,7 +42,7 @@ def dir_path(string):
     return s
 
 # def choice_chain(choices):
-#     """Argument type for string chains from choices seperated by ':'. Example: 'choice1:choice2:choice3'"""
+#     """Argument type for string chains from choices separated by ':'. Example: 'choice1:choice2:choice3'"""
 #     def _func(string):
 #         if choices is not None:
 #             for s in string.split(':') or ['']:
@@ -113,7 +113,7 @@ parser.add_argument('--colorizer', default=None, type=str, choices=COLORIZERS, h
 g = parser.add_mutually_exclusive_group()
 g.add_argument('--translator', default='google', type=str, choices=TRANSLATORS, help='Language translator to use')
 g.add_argument('--translator-chain', default=None, type=translator_chain, help='Output of one translator goes in another. Example: --translator-chain "google:JPN;sugoi:ENG".')
-g.add_argument('--selective-translation', default=None, type=translator_chain, help='Select a translator based on detected language in image. Note the first translation service acts as default if the language isnt defined. Example: --translator-chain "google:JPN;sugoi:ENG".')
+g.add_argument('--selective-translation', default=None, type=translator_chain, help='Select a translator based on detected language in image. Note the first translation service acts as default if the language isn\'t defined. Example: --translator-chain "google:JPN;sugoi:ENG".')
 
 parser.add_argument('--revert-upscaling', action='store_true', help='Downscales the previously upscaled image after translation back to original size (Use with --upscale-ratio).')
 parser.add_argument('--detection-size', default=1536, type=int, help='Size of image used for detection')
@@ -125,6 +125,7 @@ parser.add_argument('--unclip-ratio', default=2.3, type=float, help='How much to
 parser.add_argument('--box-threshold', default=0.7, type=float, help='Threshold for bbox generation')
 parser.add_argument('--text-threshold', default=0.5, type=float, help='Threshold for text detection')
 parser.add_argument('--min-text-length', default=0, type=int, help='Minimum text length of a text region')
+parser.add_argument('--no-text-lang-skip', action='store_true', help='Dont skip text that is seemingly already in the target language.')
 parser.add_argument('--inpainting-size', default=2048, type=int, help='Size of image used for inpainting (too large will result in OOM)')
 parser.add_argument('--inpainting-precision', default='fp32', type=str, help='Inpainting precision for lama, use bf16 while you can.', choices=['fp32', 'fp16', 'bf16'])
 parser.add_argument('--colorization-size', default=576, type=int, help='Size of image used for colorization. Set to -1 to use full image size')

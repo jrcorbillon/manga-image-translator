@@ -81,7 +81,7 @@ def repeating_sequence(s: str):
 
 def is_whitespace(ch):
     """Checks whether `chars` is a whitespace character."""
-    # \t, \n, and \r are technically contorl characters but we treat them
+    # \t, \n, and \r are technically control characters but we treat them
     # as whitespace since they are generally considered as such.
     if ch == " " or ch == "\t" or ch == "\n" or ch == "\r" or ord(ch) == 0:
         return True
@@ -118,7 +118,7 @@ def is_punctuation(ch):
 
 def is_valuable_char(ch):
     # return re.search(r'[^\d\W]', ch)
-    return not is_punctuation(ch) and not is_control(ch) and not is_whitespace(ch) and not ch.isnumeric()
+    return not is_punctuation(ch) and not is_control(ch) and not is_whitespace(ch) and not ch.isdigit()
 
 def is_valuable_text(text):
     for ch in text:
@@ -170,9 +170,6 @@ def get_filename_from_url(url: str, default: str = '') -> str:
     if m:
         return m.group(1)
     return default
-
-def is_url(s: str):
-    return re.search(r'^http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+$', s) and True
 
 def download_url_with_progressbar(url: str, path: str):
     if os.path.basename(path) in ('.', '') or os.path.isdir(path):

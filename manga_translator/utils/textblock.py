@@ -5,6 +5,7 @@ from shapely.geometry import Polygon, MultiPoint
 from functools import cached_property
 import copy
 import re
+import py3langid as langid
 
 from .generic import color_difference, is_right_to_left_char, is_valuable_char
 # from ..detection.ctd_utils.utils.imgproc_utils import union_area, xywh2xyxypoly
@@ -13,7 +14,7 @@ from .generic import color_difference, is_right_to_left_char, is_valuable_char
 # LANGCLS2IDX = {'eng': 0, 'ja': 1, 'unknown': 2}
 
 # determines render direction
-LANGAUGE_ORIENTATION_PRESETS = {
+LANGUAGE_ORIENTATION_PRESETS = {
     'CHS': 'auto',
     'CHT': 'auto',
     'CSY': 'h',
@@ -41,7 +42,7 @@ class TextBlock(object):
     Object that stores a block of text made up of textlines.
     """
     def __init__(self, lines: List,
-                 text: List[str] = None,
+                 texts: List[str] = None,
                  language: str = 'unknown',
                  font_size: float = -1,
                  angle: int = 0,
@@ -60,6 +61,7 @@ class TextBlock(object):
                  _bounding_rect: List = None,
                  default_stroke_width = 0.2,
                  font_weight = 50,
+                 source_lang: str = "",
                  target_lang: str = "",
                  opacity: float = 1.,
                  shadow_radius: float = 0.,
@@ -75,7 +77,8 @@ class TextBlock(object):
         self.angle = angle
         self._direction = direction
 
-        self.text = text if text is not None else []
+        self.texts = texts if texts is not None else []
+        self.text = ' '.join(texts)
         self.prob = prob
 
         self.translation = translation
@@ -92,6 +95,7 @@ class TextBlock(object):
         self.line_spacing = line_spacing
         self.letter_spacing = letter_spacing
         self._alignment = alignment
+        self._source_lang = source_lang
         self.target_lang = target_lang
 
         self._bounding_rect = _bounding_rect
@@ -189,7 +193,7 @@ class TextBlock(object):
         lines = self.lines.reshape((-1, 2))
         return MultiPoint([tuple(l) for l in lines]).convex_hull.area
     
-    def normalizd_width_list(self) -> List[float]:
+    def normalized_width_list(self) -> List[float]:
         polygons = self.unrotated_polygons
         width_list = []
         for polygon in polygons:
@@ -235,10 +239,11 @@ class TextBlock(object):
                 region = cv2.resize(region, (maxwidth, h))
         return region
 
-    def get_text(self):
-        if isinstance(self.text, str):
-            return self.text
-        return ' '.join(self.text).strip()
+    @property
+    def source_lang(self):
+        if not self._source_lang:
+            self._source_lang = langid.classify(self.text)[0]
+        return self._source_lang
 
     def get_translation_for_rendering(self):
         text = self.translation
@@ -275,7 +280,7 @@ class TextBlock(object):
         A determining factor of whether we should be sticking to the strict per textline
         text distribution when rendering.
         """
-        if len(self.text) <= 1:
+        if len(self.texts) <= 1:
             return False
 
         bullet_regexes = [
@@ -284,7 +289,7 @@ class TextBlock(object):
             r'[QA]:', # Q: ... A: ...
         ]
         bullet_type_idx = -1
-        for line_text in self.text:
+        for line_text in self.texts:
             for i, breg in enumerate(bullet_regexes):
                 if re.search(r'(?:[\n]|^)((?:' + breg + r')[\s]*)', line_text):
                     if bullet_type_idx >= 0 and bullet_type_idx != i:
@@ -322,7 +327,7 @@ class TextBlock(object):
     def direction(self):
         """Render direction determined through used language or aspect ratio."""
         if self._direction not in ('h', 'v', 'hr', 'vr'):
-            d = LANGAUGE_ORIENTATION_PRESETS.get(self.target_lang)
+            d = LANGUAGE_ORIENTATION_PRESETS.get(self.target_lang)
             if d in ('h', 'v', 'hr', 'vr'):
                 return d
 
@@ -481,7 +486,7 @@ def sort_regions(regions: List[TextBlock], right_to_left=True) -> List[TextBlock
 #         vertical = norm_v > norm_h
 #     else:
 #         vertical = norm_v > norm_h * 2
-#     # calcuate distance between textlines and origin 
+#     # calculate distance between textlines and origin 
 #     if vertical:
 #         primary_vec, primary_norm = v, norm_v
 #         distance_vectors = center_pnts - np.array([[im_w, 0]], dtype=np.float64)   # vertical manga text is read from right to left, so origin is (imw, 0)
