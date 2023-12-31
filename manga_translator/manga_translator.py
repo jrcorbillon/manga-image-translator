@@ -1417,7 +1417,7 @@ class MangaTranslatorGradio(MangaTranslator):
                            text_alignment="auto", text_case="sentence", text_manga2eng=False,
                            text_filter_text='', text_gimp_font="Sans-serif", text_font_file=None,
                            misc_overwrite=False, image_ignore_bubble=0, translator_gpt_config=None,
-                           text_font_color='', image_inpainting_precision="fp32",
+                           text_font_color='', image_inpainting_precision="fp32", text_no_hyphenation=False,
                            translator_threads=1
                            ):
         image_detection_size = int(image_detection_size)
@@ -1455,6 +1455,7 @@ class MangaTranslatorGradio(MangaTranslator):
             'ignore_bubble': image_ignore_bubble,
             'font_color': text_font_color,
             'inpainting_precision': image_inpainting_precision,
+            'no_hyphenation': text_no_hyphenation,
         }
         
         if text_font_size is not None and text_font_size > 0:
@@ -1518,7 +1519,7 @@ class MangaTranslatorGradio(MangaTranslator):
                           text_alignment="auto", text_case="sentence", text_manga2eng=False,
                           text_filter_text='', text_gimp_font="Sans-serif", text_font_file=None,
                           misc_overwrite=False, image_ignore_bubble=0, translator_gpt_config=None,
-                          text_font_color='', image_inpainting_precision="fp32",
+                          text_font_color='', image_inpainting_precision="fp32", text_no_hyphenation=False,
                           translator_threads=1,
                           progress=gr.Progress()):
         image_detection_size = int(image_detection_size)
@@ -1557,6 +1558,7 @@ class MangaTranslatorGradio(MangaTranslator):
                 'ignore_bubble': image_ignore_bubble,
                 'font_color': text_font_color,
                 'inpainting_precision': image_inpainting_precision,
+                'no_hyphenation': text_no_hyphenation,
             }
                         
             if text_font_size is not None and text_font_size > 0:
@@ -1651,6 +1653,7 @@ class MangaTranslatorGradio(MangaTranslator):
             'text_font_color': self.params.get('font_color', ''),
             'translator_threads': self.params.get('batch_concurrency', 1),
             'inpainting-precision': self.params.get('inpainting_precision', 'fp32'),
+            'no_hyphenation': self.params.get('no_hyphenation', False),
         }
         
         if params['image_save_file_type'] == None:
@@ -1808,6 +1811,7 @@ class MangaTranslatorGradio(MangaTranslator):
                     text_alignment = gr.Dropdown(["auto", "left", "center", "right"], label="Text Alignment", value="auto")
                     text_case = gr.Dropdown(["sentence", "uppercase", "lowercase"], label="Text Case", value="sentence")
                     text_manga2eng = gr.Checkbox(label="Manga2Eng", value=False)
+                    text_no_hyphenation = gr.Checkbox(label="No Hyphenation", value=False)
                     text_filter_text = gr.Textbox(label="Filter Text", value=None)
                     text_gimp_font = gr.Textbox(label="GIMP Font", value="Sans-serif")
                 with gr.Row():
@@ -1863,6 +1867,7 @@ class MangaTranslatorGradio(MangaTranslator):
                 translator_gpt_config,
                 text_font_color,
                 image_inpainting_precision,
+                text_no_hyphenation,
                 translator_threads,
             ]
             
