@@ -1316,6 +1316,7 @@ class MangaTranslatorGradio(MangaTranslator):
         self.first_run = True
         self.gradio_concurrency = params.get('gradio_concurrency', 1)
         self.params = params
+        logger.info(f"device: {self.device}")
         
     def run_in_event_loop(self, coroutine, *args, **kwargs):
         """This function runs the given coroutine in a new event loop."""
@@ -1481,10 +1482,10 @@ class MangaTranslatorGradio(MangaTranslator):
         elif (text_case == 'lowercase'):
             params['lowercase'] = True
             
-        if device == "cuda_limited":
-            params['use_cuda_limited'] = True
+        if device == "gpu_limited":
+            params['use_gpu_limited'] = True
         elif device == "cuda":
-            params['use_cuda'] = True
+            params['use_gpu'] = True
             
         if translator_gpt_config is not None:
             params['gpt_config'] = translator_gpt_config.name 
@@ -1584,10 +1585,10 @@ class MangaTranslatorGradio(MangaTranslator):
             elif (text_case == 'lower'):
                 params['lowercase'] = True
                 
-            if device == "cuda_limited":
-                params['use_cuda_limited'] = True
-            elif device == "cuda":
-                params['use_cuda'] = True
+            if device == "gpu_limited":
+                params['use_gpu_limited'] = True
+            elif device == "gpu":
+                params['use_gpu'] = True
                 
             if translator_gpt_config is not None:
                 params['gpt_config'] = translator_gpt_config.name
@@ -1655,7 +1656,7 @@ class MangaTranslatorGradio(MangaTranslator):
             'inpainting-precision': self.params.get('inpainting_precision', 'fp32'),
             'no_hyphenation': self.params.get('no_hyphenation', False),
         }
-        
+
         if params['image_save_file_type'] == None:
             params['image_save_file_type'] = "jpg"
         
