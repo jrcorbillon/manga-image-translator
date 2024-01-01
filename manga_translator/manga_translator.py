@@ -1494,6 +1494,10 @@ class MangaTranslatorGradio(MangaTranslator):
         if file_translated and not misc_overwrite:
             return file_translated, "File already exists. Skipping translation."
         
+        params['verbose'] = True
+
+        files_progress = []
+
         try:
             startTime = time.time()
             super().__init__(params)
@@ -1501,11 +1505,21 @@ class MangaTranslatorGradio(MangaTranslator):
             endTime = time.time()
             totalTime = round(endTime - startTime, 2)
             status = "Successfully translated image.\n" + "Time taken: " + str(totalTime) + " seconds" 
+            files_progress = [
+                result,
+                self._result_path('inpainted.png'),
+                self._result_path('mask_final.png'),
+                self._result_path('inpaint_input.png'),
+                self._result_path('bboxes.png'),
+                self._result_path('bboxes_unfiltered.png'),
+                self._result_path('mask_raw.png')
+            ]
         except Exception as e:
             result = None
+            files_progress = None
             status = "Failed to translate image:\n" + str(e)
         
-        return result, status
+        return files_progress, status
     
     def process_image_zip_plus(self, image_zip_file=None, translator="offline", target_lang="ENG",
                           device="cpu", image_detector="default", image_inpainter="default",
@@ -1747,8 +1761,7 @@ class MangaTranslatorGradio(MangaTranslator):
                         image_file_input = gr.File(type="filepath", label="Upload Image File")
                         image_submit_button = gr.Button("Submit")
                     with gr.Column(min_width=600):
-                        with gr.Row():
-                            image_output_file = gr.Image(label="Download Translated Image File")
+                        image_output_gallery = gr.Gallery(label="Output Image", columns=6, preview=True)
                         with gr.Row():
                             image_output_text = gr.Textbox(label="Status", lines=2)
             with gr.Tab("Batch/ZIP"):
@@ -1826,6 +1839,8 @@ class MangaTranslatorGradio(MangaTranslator):
                     misc_attempts = gr.Slider(minimum=0, maximum=10, step=1, label="Attempts", value=0)
                     misc_skip_error = gr.Checkbox(label="Skip Error", value=False)
                     misc_overwrite = gr.Checkbox(label="Overwrite", value=False)
+
+            
                     
             default_params = [
                 translator_translator,
@@ -1882,9 +1897,8 @@ class MangaTranslatorGradio(MangaTranslator):
             ]
             image_zip_submit.extend(default_params)
             
-        
             image_submit_button.click(self.process_image_sync_plus, inputs=image_submit,
-                outputs=[image_output_file, image_output_text],
+                outputs=[image_output_gallery, image_output_text],
                 concurrency_limit=self.gradio_concurrency)
             image_zip_submit_button.click(self.process_image_zip_plus, inputs=image_zip_submit,
                 outputs=[image_zip_output_file, image_zip_output_text],

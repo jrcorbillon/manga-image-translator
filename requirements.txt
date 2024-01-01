@@ -44,7 +44,7 @@ aiofiles
 arabic-reshaper
 pyhyphen
 langcodes
-gradio
+gradio==4.12
 litellm
 pytorch_lightning
 zipfile
