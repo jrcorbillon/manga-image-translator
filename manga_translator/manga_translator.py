@@ -1601,7 +1601,7 @@ class MangaTranslatorGradio(MangaTranslator):
                 
             if device == "gpu_limited":
                 params['use_gpu_limited'] = True
-            elif device == "gpu":
+            elif device == "cuda":
                 params['use_gpu'] = True
                 
             if translator_gpt_config is not None:
