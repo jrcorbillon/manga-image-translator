@@ -1697,6 +1697,55 @@ class MangaTranslatorGradio(MangaTranslator):
         params['progress'] = progress
         
         return self.process_image_zip_plus(**params)
+    
+    def process_text_translation_sync(self, text=None, translator="offline", target_lang="ENG"):
+        params = self.get_default_params()
+        params['texts'] = text
+        params['translator'] = translator
+        params['target_lang'] = target_lang
+        
+        return self.process_text_translation(params)
+    
+    def process_text_translation(self, params={}):
+        device = params.get('device', 'cpu')
+        if device == "gpu_limited":
+            params['use_gpu_limited'] = True
+        elif device == "cuda":
+            params['use_gpu'] = True
+        
+        id = self.generate_md5_signature(params)
+        file_name = f'{id}-translated.txt'
+        try:
+            startTime = time.time()
+            super().__init__(params)
+            result = asyncio.run(self.translate_text(params))
+            with open(self._result_path(file_name), 'w', encoding='utf-8') as f:
+                f.write(result)
+            file_path = self._result_path(file_name)
+            endTime = time.time()
+            totalTime = round(endTime - startTime, 2)
+            status = "Successfully translated text.\n" + "Time taken: " + str(totalTime) + " seconds"
+        except Exception as e:
+            result = None
+            file_path = None
+            status = "Failed to translate text:\n" + str(e)
+            
+        return result, file_path, status
+    
+    async def translate_text(self, params={}):
+        ctx = Context(**params)
+        self._preprocess_params(ctx)
+        await prepare_translation(ctx.translator)
+        print(f"self._gpu_limited_memory: {self._gpu_limited_memory}, device: {self.device}")
+        translated_sentences = \
+            await dispatch_translation(ctx.translator,
+                                       ctx.texts.split("\n"),
+                                       ctx.use_mtpe,
+                                       ctx, 'cpu' if self._gpu_limited_memory else self.device)
+        
+        return "\n".join(translated_sentences)
+
+        
         
     def fixBadZipfile(self, zipFile):  
         f = open(zipFile, 'r+b')  
@@ -1739,9 +1788,12 @@ class MangaTranslatorGradio(MangaTranslator):
     
     def generate_md5_signature(self, params):
         params_copy = params.copy()
-        del params_copy['overwrite']
-        del params_copy['attempts']
-        del params_copy['ignore_errors']
+        try:
+            del params_copy['overwrite']
+            del params_copy['attempts']
+            del params_copy['ignore_errors']
+        except KeyError as e:
+            pass
         input_string = str(params_copy)
         m = hashlib.md5()
         m.update(input_string.encode('utf-8'))
@@ -1755,94 +1807,110 @@ class MangaTranslatorGradio(MangaTranslator):
         
         with gr.Blocks() as interface:
             gr.Markdown("Manga Image Translator")
-            with gr.Tab("Single"):
-                with gr.Row():
-                    with gr.Column(min_width=600):
-                        image_file_input = gr.File(type="filepath", label="Upload Image File")
-                        image_submit_button = gr.Button("Submit")
-                    with gr.Column(min_width=600):
-                        image_output_gallery = gr.Gallery(label="Output Image", columns=6, preview=True)
-                        with gr.Row():
-                            image_output_text = gr.Textbox(label="Status", lines=2)
-            with gr.Tab("Batch/ZIP"):
-                with gr.Row():
-                    with gr.Column(min_width=600):
-                        image_zip_file_input = gr.File(type="filepath", label="Batch Image(Zip)")
-                        image_zip_submit_button = gr.Button("Submit")
-                    with gr.Column(min_width=600):
-                        with gr.Row():
-                            image_zip_output_file = gr.File(label="Download Zip File")
-                        with gr.Row():
-                            image_zip_output_text = gr.Textbox(label="Status", lines=2)
+            with gr.Tab("Image"):
+                with gr.Tab("Single"):
+                    with gr.Row():
+                        with gr.Column(min_width=600):
+                            image_file_input = gr.File(type="filepath", label="Upload Image File")
+                            image_submit_button = gr.Button("Submit")
+                        with gr.Column(min_width=600):
+                            image_output_gallery = gr.Gallery(label="Output Image", columns=6, preview=True)
+                            with gr.Row():
+                                image_output_text = gr.Textbox(label="Status", lines=2)
+                with gr.Tab("Batch/ZIP"):
+                    with gr.Row():
+                        with gr.Column(min_width=600):
+                            image_zip_file_input = gr.File(type="filepath", label="Batch Image(Zip)")
+                            image_zip_submit_button = gr.Button("Submit")
+                        with gr.Column(min_width=600):
+                            with gr.Row():
+                                image_zip_output_file = gr.File(label="Download Zip File")
+                            with gr.Row():
+                                image_zip_output_text = gr.Textbox(label="Status", lines=2)
+                            
+                with gr.Column():
+                    gr.Markdown("Translator Settings")
+                    with gr.Row():
+                        translator_translator = gr.Dropdown(list(TRANSLATORS.keys()), label="Translator", value="offline")
+                        translator_gpt_config = gr.File(label="GPT Config (Optional for GPT Translator)", type="filepath")
+                        translator_target_lang = gr.Dropdown(list(VALID_LANGUAGES.keys()), label="Target Language", value="ENG")
+                        translator_device = gr.Radio(list(device_selected), label="Device", value=self.device)
+                        translator_threads = gr.Slider(minimum=1, maximum=10, step=1, label="Threads", value=1)
+                            
+                with gr.Column():
+                    gr.Markdown("Image Settings")
+                    with gr.Row():
+                        image_detector = gr.Dropdown(list(DETECTORS.keys()), label="Image Detector", value="default")
+                        image_inpainter = gr.Dropdown(list(INPAINTERS.keys()), label="Image Inpainter", value="default")
+                        image_upscaler = gr.Dropdown(list(UPSCALERS.keys()), label="Image Upscaler", value="esrgan")
+                        image_upscale_ratio = gr.Slider(minimum=0, maximum=32, step=0.1, label="Image Upscale Ratio", value=0)
+                        image_detection_size = gr.Dropdown(list(image_detection_size_list), label="Image Detection Size", value="2048")
+                        image_revert_upscaling = gr.Checkbox(label="Revert Upscaling", value=False)
+                    with gr.Row():
+                        image_colorizer = gr.Dropdown(colorizer_list, label="Image Colorizer", value="None")
+                        image_det_rotate = gr.Checkbox(label="Rotate", value=False)
+                        image_det_auto_rotate = gr.Checkbox(label="Auto Rotate", value=False)
+                        image_det_invert = gr.Checkbox(label="Invert", value=False)
+                        image_det_gamma_correct = gr.Checkbox(label="Gamma Correct", value=False)
+                    with gr.Row():
+                        image_unclip_ratio = gr.Slider(minimum=0.1, maximum=20, step=0.01, label="Unclip Ratio", value=2.3)
+                        image_box_threshold = gr.Slider(minimum=0.1, maximum=5, step=0.01, label="Box Threshold", value=0.7)
+                        image_text_threshold = gr.Slider(minimum=0.1, maximum=5, step=0.01, label="Text Threshold", value=0.5)
+                        image_colorization_size = gr.Slider(minimum=-1, maximum=4096, step=1, label="Colorization Size", value=576)
+                        image_inpainting_size = gr.Slider(minimum=0, maximum=4096, step=1, label="Inpainting Size", value=2048)
+                        image_inpainting_precision = gr.Dropdown(["fp32", "fp16", "bf16"], label="Inpainting Precision", value="fp32")
                         
-            with gr.Column():
-                gr.Markdown("Translator Settings")
-                with gr.Row():
-                    translator_translator = gr.Dropdown(list(TRANSLATORS.keys()), label="Translator", value="offline")
-                    translator_gpt_config = gr.File(label="GPT Config (Optional for GPT Translator)", type="filepath")
-                    translator_target_lang = gr.Dropdown(list(VALID_LANGUAGES.keys()), label="Target Language", value="ENG")
-                    translator_device = gr.Radio(list(device_selected), label="Device", value=self.device)
-                    translator_threads = gr.Slider(minimum=1, maximum=10, step=1, label="Threads", value=1)
+                    with gr.Row():
+                        image_ignore_bubble = gr.Slider(minimum=0, maximum=50, step=1, label="Ignore Bubble", value=0)
+                        image_denoise_sigma = gr.Slider(minimum=0, maximum=100, step=0.1, label="Denoise Sigma", value=30)
+                        image_save_quality = gr.Slider(minimum=0, maximum=100, step=1, label="Save Quality", value=85)
+                        image_save_file_type = gr.Dropdown(["jpg", "png", "webp"], label="Save File Type", value="jpg")
                         
-            with gr.Column():
-                gr.Markdown("Image Settings")
-                with gr.Row():
-                    image_detector = gr.Dropdown(list(DETECTORS.keys()), label="Image Detector", value="default")
-                    image_inpainter = gr.Dropdown(list(INPAINTERS.keys()), label="Image Inpainter", value="default")
-                    image_upscaler = gr.Dropdown(list(UPSCALERS.keys()), label="Image Upscaler", value="esrgan")
-                    image_upscale_ratio = gr.Slider(minimum=0, maximum=32, step=0.1, label="Image Upscale Ratio", value=0)
-                    image_detection_size = gr.Dropdown(list(image_detection_size_list), label="Image Detection Size", value="2048")
-                    image_revert_upscaling = gr.Checkbox(label="Revert Upscaling", value=False)
-                with gr.Row():
-                    image_colorizer = gr.Dropdown(colorizer_list, label="Image Colorizer", value="None")
-                    image_det_rotate = gr.Checkbox(label="Rotate", value=False)
-                    image_det_auto_rotate = gr.Checkbox(label="Auto Rotate", value=False)
-                    image_det_invert = gr.Checkbox(label="Invert", value=False)
-                    image_det_gamma_correct = gr.Checkbox(label="Gamma Correct", value=False)
-                with gr.Row():
-                    image_unclip_ratio = gr.Slider(minimum=0.1, maximum=20, step=0.01, label="Unclip Ratio", value=2.3)
-                    image_box_threshold = gr.Slider(minimum=0.1, maximum=5, step=0.01, label="Box Threshold", value=0.7)
-                    image_text_threshold = gr.Slider(minimum=0.1, maximum=5, step=0.01, label="Text Threshold", value=0.5)
-                    image_colorization_size = gr.Slider(minimum=-1, maximum=4096, step=1, label="Colorization Size", value=576)
-                    image_inpainting_size = gr.Slider(minimum=0, maximum=4096, step=1, label="Inpainting Size", value=2048)
-                    image_inpainting_precision = gr.Dropdown(["fp32", "fp16", "bf16"], label="Inpainting Precision", value="fp32")
-                    
-                with gr.Row():
-                    image_ignore_bubble = gr.Slider(minimum=0, maximum=50, step=1, label="Ignore Bubble", value=0)
-                    image_denoise_sigma = gr.Slider(minimum=0, maximum=100, step=0.1, label="Denoise Sigma", value=30)
-                    image_save_quality = gr.Slider(minimum=0, maximum=100, step=1, label="Save Quality", value=85)
-                    image_save_file_type = gr.Dropdown(["jpg", "png", "webp"], label="Save File Type", value="jpg")
-                    
-            with gr.Column():
-                gr.Markdown("Text Settings")
-                with gr.Row():
-                    text_min_text_length = gr.Slider(minimum=0, maximum=100, step=1, label="Min Text Length", value=0)
-                    text_font_size = gr.Slider(minimum=0, maximum=100, step=1, label="Font Size", value=None)
-                    text_font_size_offset = gr.Slider(minimum=0, maximum=100, step=1, label="Font Size Offset", value=0)
-                    text_font_size_minimum = gr.Slider(minimum=-1, maximum=100, step=1, label="Font Size Minimum", value=-1)
-                    text_force_render_orientation = gr.Dropdown(["auto", "horizontal", "vertical"], label="Force Render Text Orientation", value="auto")
-                with gr.Row():
-                    text_alignment = gr.Dropdown(["auto", "left", "center", "right"], label="Text Alignment", value="auto")
-                    text_case = gr.Dropdown(["sentence", "uppercase", "lowercase"], label="Text Case", value="sentence")
-                    text_manga2eng = gr.Checkbox(label="Manga2Eng", value=False)
-                    text_no_hyphenation = gr.Checkbox(label="No Hyphenation", value=False)
-                    text_filter_text = gr.Textbox(label="Filter Text", value=None)
-                    text_gimp_font = gr.Textbox(label="GIMP Font", value="Sans-serif")
-                with gr.Row():
-                    text_font_color = gr.Textbox(label="Font Color(hex string without #)", value=None)
-                with gr.Row():
-                    text_font_file = gr.File(label="Font Path", type="filepath")
-                    
-            with gr.Column():
-                gr.Markdown("Misc")
-                with gr.Row():
-                    misc_attempts = gr.Slider(minimum=0, maximum=10, step=1, label="Attempts", value=0)
-                    misc_skip_error = gr.Checkbox(label="Skip Error", value=False)
-                    misc_overwrite = gr.Checkbox(label="Overwrite", value=False)
+                with gr.Column():
+                    gr.Markdown("Text Settings")
+                    with gr.Row():
+                        text_min_text_length = gr.Slider(minimum=0, maximum=100, step=1, label="Min Text Length", value=0)
+                        text_font_size = gr.Slider(minimum=0, maximum=100, step=1, label="Font Size", value=None)
+                        text_font_size_offset = gr.Slider(minimum=0, maximum=100, step=1, label="Font Size Offset", value=0)
+                        text_font_size_minimum = gr.Slider(minimum=-1, maximum=100, step=1, label="Font Size Minimum", value=-1)
+                        text_force_render_orientation = gr.Dropdown(["auto", "horizontal", "vertical"], label="Force Render Text Orientation", value="auto")
+                    with gr.Row():
+                        text_alignment = gr.Dropdown(["auto", "left", "center", "right"], label="Text Alignment", value="auto")
+                        text_case = gr.Dropdown(["sentence", "uppercase", "lowercase"], label="Text Case", value="sentence")
+                        text_manga2eng = gr.Checkbox(label="Manga2Eng", value=False)
+                        text_no_hyphenation = gr.Checkbox(label="No Hyphenation", value=False)
+                        text_filter_text = gr.Textbox(label="Filter Text", value=None)
+                        text_gimp_font = gr.Textbox(label="GIMP Font", value="Sans-serif")
+                    with gr.Row():
+                        text_font_color = gr.Textbox(label="Font Color(hex string without #)", value=None)
+                    with gr.Row():
+                        text_font_file = gr.File(label="Font Path", type="filepath")
+                        
+                with gr.Column():
+                    gr.Markdown("Misc")
+                    with gr.Row():
+                        misc_attempts = gr.Slider(minimum=0, maximum=10, step=1, label="Attempts", value=0)
+                        misc_skip_error = gr.Checkbox(label="Skip Error", value=False)
+                        misc_overwrite = gr.Checkbox(label="Overwrite", value=False)
 
-            
+            with gr.Tab("Text"):
+                with gr.Row():
+                    with gr.Column(min_width=600):
+                        text_field_input = gr.Textbox(label="Input Text", lines=10)
+                        text_submit_button = gr.Button("Submit")
+                    with gr.Column(min_width=600):
+                        text_field_output = gr.Textbox(label="Output Text", lines=10)
+                        text_file_output = gr.File(label="Download Text File")
+                        text_output_text = gr.Textbox(label="Status", lines=2)
+                with gr.Row():
+                    with gr.Column():
+                        gr.Markdown("Translator Settings")
+                        with gr.Row():
+                            text_translator_translator = gr.Dropdown(list(TRANSLATORS.keys()), label="Translator", value="offline")
+                            text_translator_gpt_config = gr.File(label="GPT Config (Optional for GPT Translator)", type="filepath")
+                            text_translator_target_lang = gr.Dropdown(list(VALID_LANGUAGES.keys()), label="Target Language", value="ENG")
                     
-            default_params = [
+            image_default_params = [
                 translator_translator,
                 translator_target_lang,
                 translator_device,
@@ -1890,18 +1958,22 @@ class MangaTranslatorGradio(MangaTranslator):
             image_submit = [
                 image_file_input
             ]
-            image_submit.extend(default_params)
+            image_submit.extend(image_default_params)
                         
             image_zip_submit = [
                 image_zip_file_input,
             ]
-            image_zip_submit.extend(default_params)
+            image_zip_submit.extend(image_default_params)
             
             image_submit_button.click(self.process_image_sync_plus, inputs=image_submit,
                 outputs=[image_output_gallery, image_output_text],
                 concurrency_limit=self.gradio_concurrency)
             image_zip_submit_button.click(self.process_image_zip_plus, inputs=image_zip_submit,
                 outputs=[image_zip_output_file, image_zip_output_text],
+                concurrency_limit=self.gradio_concurrency)
+            
+            text_submit_button.click(self.process_text_translation_sync, inputs=[text_field_input, text_translator_translator, text_translator_target_lang],
+                outputs=[text_field_output, text_file_output, text_output_text],
                 concurrency_limit=self.gradio_concurrency)
         
         interface.queue().launch(server_name=self.host, debug=True, share=self.share, server_port=self.port)
@@ -1966,4 +2038,4 @@ class MangaTranslatorGradio(MangaTranslator):
                 outputs=[image_zip_output_file, image_zip_output_text],
                 concurrency_limit=self.gradio_concurrency)
         
-        interface.queue().launch(server_name=self.host, debug=True, share=self.share, server_port=self.port)
+        interface.queue(default_concurrency_limit=2).launch(server_name=self.host, debug=True, share=self.share, server_port=self.port)
