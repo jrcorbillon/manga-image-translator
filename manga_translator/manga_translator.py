@@ -1322,10 +1322,32 @@ class MangaTranslatorGradio(MangaTranslator):
         """This function runs the given coroutine in a new event loop."""
         loop = asyncio.new_event_loop()
         return loop.run_until_complete(coroutine(*args, **kwargs))
+    
+    def get_first_file_in_zip(self, zip_file):
+        with zipfile.ZipFile(zip_file, "r") as zf:
+            return self._get_first_file_in_zip_recursive(zf, zf.namelist())
+
+    def _get_first_file_in_zip_recursive(self, zf, file_list):
+        for filename in file_list:
+            if not zf.getinfo(filename).is_dir():
+                return filename
+            else:
+                sub_files = [f for f in zf.namelist() if f.startswith(filename) and f != filename]
+                result = self._get_first_file_in_zip_recursive(zf, sub_files)
+                if result is not None:
+                    return result
+        return None
+    
+    def strip_first_path(self, path, str):
+        split_path = path.split(str, 1)
+        if len(split_path) > 1:
+            return split_path[1]
+        else:
+            return str
        
     async def process_zip_file(self, zip_file, translator_params=None, progress=gr.Progress()):
         self.fixBadZipfile(zip_file.name)
-        self.validateZipFile(zip_file.name)
+        # self.validateZipFile(zip_file.name)
         zip_file_name = os.path.splitext(os.path.basename(zip_file.name))[0].strip()
         output_text = ""
         output_files = []
@@ -1335,36 +1357,41 @@ class MangaTranslatorGradio(MangaTranslator):
             with zipfile.ZipFile(zip_file.name, "r") as zf:
                 with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
                     futures = []
-                    zip_items = zf.infolist()
+                    zip_items = zf.namelist()
                     
-                    if self.first_run:
-                        logger.info("Warming up the model...")
-                        file_info = zip_items[0]
-                        temp_file_name = os.path.join(BASE_PATH, 'result', zip_file_name, file_info.filename.split('/')[-1])
-                        os.makedirs(os.path.dirname(temp_file_name), exist_ok=True)
-                        with zf.open(file_info.filename) as file:
-                            with open(temp_file_name, "wb") as temp_file:
-                                temp_file.write(file.read())
-                        translator_params = translator_params.copy()
-                        future = executor.submit(self.run_in_event_loop, self.process_image, temp_file, translator_params)
-                        zip_items = zip_items[1:]
-                        out_file_name = future.result()
-                        if not os.path.exists(out_file_name):
-                            out_file_name = out_file_name.replace(f"-{params_hash}-translated", "")
-                        output_files.append({"name":out_file_name, "data": None})
-                        
-                        
+                    logger.info("Warming up the model...")
+                    first_file = self.get_first_file_in_zip(zip_file.name)
+
+                    temp_file_name = os.path.join(BASE_PATH, 'result', zip_file_name, first_file)
+                    os.makedirs(os.path.dirname(temp_file_name), exist_ok=True)
+                    with zf.open(first_file) as file:
+                        with open(temp_file_name, "wb") as temp_file:
+                            temp_file.write(file.read())
+                    translator_params = translator_params.copy()
+                    translator_params['file_name'] = first_file
+                    translator_params['dir_name'] = zip_file_name
+                    future = executor.submit(self.run_in_event_loop, self.process_image, temp_file, translator_params)
+                    zip_items.remove(first_file)
+                    out_file_name = future.result()
+                    if not os.path.exists(out_file_name):
+                        out_file_name = out_file_name.replace(f"-{params_hash}-translated", "")
+                    output_files.append({"name":out_file_name, "data": None})
+                    
                     for file_info in zip_items:
-                        temp_file_name = os.path.join(BASE_PATH, 'result', zip_file_name, file_info.filename.split('/')[-1])
-                        os.makedirs(os.path.dirname(temp_file_name), exist_ok=True)
-                        with zf.open(file_info.filename) as file:
-                            with open(temp_file_name, "wb") as temp_file:
-                                temp_file.write(file.read())
-                        translator_params = translator_params.copy()
-                        future = executor.submit(self.run_in_event_loop, self.process_image, temp_file, translator_params)
-                        futures.append(future)
-                        
-                        
+                        if file_info.lower().endswith(('.png', '.jpg', '.jpeg', '.tiff', '.bmp', '.gif', '.webp')) == False:
+                            continue
+                        if not file_info.endswith('/'):  # Skip directories
+                            temp_file_name = os.path.join(BASE_PATH, 'result', zip_file_name, file_info)
+                            os.makedirs(os.path.dirname(temp_file_name), exist_ok=True)
+                            with zf.open(file_info) as file:
+                                with open(temp_file_name, "wb") as temp_file:
+                                    temp_file.write(file.read())
+                            translator_params = translator_params.copy()
+                            translator_params['file_name'] = file_info
+                            translator_params['dir_name'] = zip_file_name
+                            future = executor.submit(self.run_in_event_loop, self.process_image, temp_file, translator_params)
+                            futures.append(future)
+                            
                     for future in progress.tqdm(futures, desc="Processing Files", unit="files"):
                         out_file_name = future.result()
                         if not os.path.exists(out_file_name):
@@ -1372,16 +1399,13 @@ class MangaTranslatorGradio(MangaTranslator):
                         output_files.append({"name":out_file_name, "data": None})
             
             # Create a new zip file
-            # create path for zip file
-            # os.makedirs(os.path.join(BASE_PATH, 'result', zip_file_name), exist_ok=True)
             output_zip_file_name = os.path.join(BASE_PATH, 'result', f'{zip_file_name}-{params_hash}-translated.zip')
             with zipfile.ZipFile(output_zip_file_name, 'w') as zip_file:
-                # Add the translated text file to the zip file
                 for file in progress.tqdm(output_files, desc="Creating Zip File", unit="files"):
                     if file["data"] is not None:
                         zip_file.writestr(file["name"], file["data"])
                     else:
-                        arcname = os.path.basename(file["name"])
+                        arcname = self.strip_first_path(file["name"], zip_file_name)
                         zip_file.write(file["name"], arcname)
             return output_text, output_zip_file_name
         
@@ -1393,8 +1417,8 @@ class MangaTranslatorGradio(MangaTranslator):
         self.first_run = False
         if image_file:
             params_hash = params.get('params_hash', '')
-            dir_name = os.path.split(os.path.split(image_file.name)[0])[1].strip()
-            file_name = os.path.splitext(os.path.split(image_file.name)[1])[0] + f"-{params_hash}-translated." + params.get('format', 'jpg')
+            dir_name = params.get('dir_name', '')
+            file_name = params.get('file_name', '').replace('/', '\\') + f"-{params_hash}-translated." + params.get('format', 'jpg')
             dest = os.path.join(BASE_PATH, 'result', dir_name, file_name)
             
             if not os.path.exists(dest):
@@ -1419,6 +1443,7 @@ class MangaTranslatorGradio(MangaTranslator):
                            text_filter_text='', text_gimp_font="Sans-serif", text_font_file=None,
                            misc_overwrite=False, image_ignore_bubble=0, translator_gpt_config=None,
                            text_font_color='', image_inpainting_precision="fp32", text_no_hyphenation=False,
+                           image_kernel_size=3,
                            translator_threads=1
                            ):
         image_detection_size = int(image_detection_size)
@@ -1457,6 +1482,7 @@ class MangaTranslatorGradio(MangaTranslator):
             'font_color': text_font_color,
             'inpainting_precision': image_inpainting_precision,
             'no_hyphenation': text_no_hyphenation,
+            'kernel_size': image_kernel_size,
         }
         
         if text_font_size is not None and text_font_size > 0:
@@ -1535,98 +1561,101 @@ class MangaTranslatorGradio(MangaTranslator):
                           text_filter_text='', text_gimp_font="Sans-serif", text_font_file=None,
                           misc_overwrite=False, image_ignore_bubble=0, translator_gpt_config=None,
                           text_font_color='', image_inpainting_precision="fp32", text_no_hyphenation=False,
+                          image_kernel_size=3,
                           translator_threads=1,
                           progress=gr.Progress()):
         image_detection_size = int(image_detection_size)
-        if image_zip_file:
-            params = {
-                'translator': translator,
-                'target_lang': target_lang,
-                'detector': image_detector,
-                'inpainter': image_inpainter,
-                'upscaler': image_upscaler,
-                'upscale_ratio': image_upscale_ratio,
-                'detection_size': image_detection_size,
-                'colorizer': image_colorizer if image_colorizer != "None" else None,
-                'attempts': misc_attempts,
-                'ignore_errors': misc_skip_errors,
-                'revert_upscaling': image_revert_upscaling,
-                'det_rotate': image_det_rotate,
-                'det_auto_rotate': image_det_auto_rotate,
-                'det_invert': image_det_invert,
-                'det_gamma_correct': image_det_gamma_correct,
-                'unclip_ratio': image_unclip_ratio,
-                'box_threshold': image_box_threshold,
-                'text_threshold': image_text_threshold,
-                'inpainting_size': image_inpainting_size,
-                'colorization_size': image_colorization_size,
-                'denoise_sigma': image_denoise_sigma,
-                'save_quality': image_save_quality,
-                'format': image_save_file_type,
-                'min_text_length': text_min_text_length,
-                'font_size_offset': text_font_size_offset,
-                'font_size_minimum': text_font_size_minimum,
-                'manga2eng': text_manga2eng,
-                'filter_text': text_filter_text,
-                'gimp_font': text_gimp_font,
-                'overwrite': misc_overwrite,
-                'ignore_bubble': image_ignore_bubble,
-                'font_color': text_font_color,
-                'inpainting_precision': image_inpainting_precision,
-                'no_hyphenation': text_no_hyphenation,
-            }
-                        
-            if text_font_size is not None and text_font_size > 0:
-                params['font_size'] = text_font_size
+        if image_zip_file is None:
+            return None, "Unsupported file format. Please upload a zip file."
             
-            if text_font_file is not None:
-                params['font_path'] = text_font_file.name
+        params = {
+            'translator': translator,
+            'target_lang': target_lang,
+            'detector': image_detector,
+            'inpainter': image_inpainter,
+            'upscaler': image_upscaler,
+            'upscale_ratio': image_upscale_ratio,
+            'detection_size': image_detection_size,
+            'colorizer': image_colorizer if image_colorizer != "None" else None,
+            'attempts': misc_attempts,
+            'ignore_errors': misc_skip_errors,
+            'revert_upscaling': image_revert_upscaling,
+            'det_rotate': image_det_rotate,
+            'det_auto_rotate': image_det_auto_rotate,
+            'det_invert': image_det_invert,
+            'det_gamma_correct': image_det_gamma_correct,
+            'unclip_ratio': image_unclip_ratio,
+            'box_threshold': image_box_threshold,
+            'text_threshold': image_text_threshold,
+            'inpainting_size': image_inpainting_size,
+            'colorization_size': image_colorization_size,
+            'denoise_sigma': image_denoise_sigma,
+            'save_quality': image_save_quality,
+            'format': image_save_file_type,
+            'min_text_length': text_min_text_length,
+            'font_size_offset': text_font_size_offset,
+            'font_size_minimum': text_font_size_minimum,
+            'manga2eng': text_manga2eng,
+            'filter_text': text_filter_text,
+            'gimp_font': text_gimp_font,
+            'overwrite': misc_overwrite,
+            'ignore_bubble': image_ignore_bubble,
+            'font_color': text_font_color,
+            'inpainting_precision': image_inpainting_precision,
+            'no_hyphenation': text_no_hyphenation,
+            'kernel_size': image_kernel_size,
+        }
+                    
+        if text_font_size is not None and text_font_size > 0:
+            params['font_size'] = text_font_size
+        
+        if text_font_file is not None:
+            params['font_path'] = text_font_file.name
+        
+        if (text_force_render_orientation == 'horizontal'):
+            params['force_horizontal'] = True
+        elif (text_force_render_orientation == 'vertical'):
+            params['force_vertical'] = True
             
-            if (text_force_render_orientation == 'horizontal'):
-                params['force_horizontal'] = True
-            elif (text_force_render_orientation == 'vertical'):
-                params['force_vertical'] = True
-                
-            if (text_alignment == 'left'):
-                params['align_left'] = True
-            elif (text_alignment == 'right'):
-                params['align_right'] = True
-            elif (text_alignment == 'center'):
-                params['align_center'] = True
-                
-            if (text_case == 'upper'):
-                params['uppercase'] = True
-            elif (text_case == 'lower'):
-                params['lowercase'] = True
-                
-            if device == "gpu_limited":
-                params['use_gpu_limited'] = True
-            elif device == "cuda":
-                params['use_gpu'] = True
-                
-            if translator_gpt_config is not None:
-                params['gpt_config'] = translator_gpt_config.name
-                
-            file_translated = self.zipfile_already_exists(image_zip_file, params)
-            if file_translated and not misc_overwrite:
-                return file_translated, "File already exists. Skipping translation."
+        if (text_alignment == 'left'):
+            params['align_left'] = True
+        elif (text_alignment == 'right'):
+            params['align_right'] = True
+        elif (text_alignment == 'center'):
+            params['align_center'] = True
             
-            params['threads'] = translator_threads
-                                       
-            try:
-                startTime = time.time()
-                super().__init__(params)
-                text, dest = asyncio.run(self.process_zip_file(image_zip_file, translator_params=params, progress=progress))
-                endTime = time.time()
-                totalTime = round(endTime - startTime, 2)
-                status = "Successfully translated zip file.\n" + "Time taken: " + str(totalTime) + " seconds"
-            except Exception as e:
-                dest = None
-                status = "Failed to translate zip file:\n" + str(e)
-                
-            return dest, status
-        else:
-            raise ValueError("Unsupported file format. Please upload an image file.")
+        if (text_case == 'upper'):
+            params['uppercase'] = True
+        elif (text_case == 'lower'):
+            params['lowercase'] = True
+            
+        if device == "gpu_limited":
+            params['use_gpu_limited'] = True
+        elif device == "cuda":
+            params['use_gpu'] = True
+            
+        if translator_gpt_config is not None:
+            params['gpt_config'] = translator_gpt_config.name
+            
+        file_translated = self.zipfile_already_exists(image_zip_file, params)
+        if file_translated and not misc_overwrite:
+            return file_translated, "File already exists. Skipping translation."
+        
+        params['threads'] = translator_threads
+                                    
+        try:
+            startTime = time.time()
+            super().__init__(params)
+            text, dest = asyncio.run(self.process_zip_file(image_zip_file, translator_params=params, progress=progress))
+            endTime = time.time()
+            totalTime = round(endTime - startTime, 2)
+            status = "Successfully translated zip file.\n" + "Time taken: " + str(totalTime) + " seconds"
+        except Exception as e:
+            dest = None
+            status = "Failed to translate zip file:\n" + str(e)
+            
+        return dest, status
+        
         
     
     def get_default_params(self):
@@ -1669,6 +1698,7 @@ class MangaTranslatorGradio(MangaTranslator):
             'translator_threads': self.params.get('batch_concurrency', 1),
             'inpainting-precision': self.params.get('inpainting_precision', 'fp32'),
             'no_hyphenation': self.params.get('no_hyphenation', False),
+            'kernel_size': self.params.get('kernel_size', 3),
         }
 
         if params['image_save_file_type'] == None:
@@ -1758,7 +1788,7 @@ class MangaTranslatorGradio(MangaTranslator):
             f.close()  
         else:  
             # raise error, file is truncated
-            raise ValueError("The provided file is not a valid zip file. Please upload a valid zip file containing text files.")
+            raise ValueError("The provided file is not a valid zip file. Please upload a valid zip file containing image files.")
         
     def validateZipFile(self, zipFile):
         with zipfile.ZipFile(zipFile, "r") as zf:
@@ -1859,8 +1889,8 @@ class MangaTranslatorGradio(MangaTranslator):
                         image_colorization_size = gr.Slider(minimum=-1, maximum=4096, step=1, label="Colorization Size", value=576)
                         image_inpainting_size = gr.Slider(minimum=0, maximum=4096, step=1, label="Inpainting Size", value=2048)
                         image_inpainting_precision = gr.Dropdown(["fp32", "fp16", "bf16"], label="Inpainting Precision", value="fp32")
-                        
                     with gr.Row():
+                        image_kernel_size = gr.Slider(minimum=1, maximum=10, step=1, label="Kernel Size", value=3)
                         image_ignore_bubble = gr.Slider(minimum=0, maximum=50, step=1, label="Ignore Bubble", value=0)
                         image_denoise_sigma = gr.Slider(minimum=0, maximum=100, step=0.1, label="Denoise Sigma", value=30)
                         image_save_quality = gr.Slider(minimum=0, maximum=100, step=1, label="Save Quality", value=85)
@@ -1952,6 +1982,7 @@ class MangaTranslatorGradio(MangaTranslator):
                 text_font_color,
                 image_inpainting_precision,
                 text_no_hyphenation,
+                image_kernel_size,
                 translator_threads,
             ]
             
