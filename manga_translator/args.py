@@ -175,5 +175,8 @@ parser.add_argument('--batch-concurrency', default=1, type=int, help='Number of 
 parser.add_argument('--gradio-concurrency', default=1, type=int, help='Number of images to process in parallel in gradio mode (gradio, gradio_plus)')
 parser.add_argument('--share', action='store_true', help='Share gradio link (gradio, gradio_plus)')
 
+parser.add_argument('--kernel-size', default=3, type=int, help='Set the convolution kernel size of the text erasure area to completely clean up text residues')
+
+
 # Generares dict with a default value for each argument
 DEFAULT_ARGS = vars(parser.parse_args([]))
