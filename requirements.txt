@@ -47,3 +47,5 @@ langcodes
 gradio==4.12
 litellm
 pytorch_lightning
+whisper-timestamped
+ffmpeg

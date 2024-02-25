@@ -17,12 +17,14 @@ import gradio as gr
 import zipfile
 import hashlib
 import concurrent.futures
+import whisper_timestamped as whisper
+
 from PIL import Image
 from typing import List, Tuple, Union
 from aiohttp import web
 from marshmallow import Schema, fields, ValidationError
 from zipfile import BadZipFile
-
+from whisper.tokenizer import LANGUAGES as WHISPER_LANGUAGES
 from manga_translator.utils.threading import Throttler
 
 from .args import DEFAULT_ARGS, translator_chain
@@ -1769,7 +1771,6 @@ class MangaTranslatorGradio(MangaTranslator):
         ctx = Context(**params)
         self._preprocess_params(ctx)
         await prepare_translation(ctx.translator)
-        print(f"self._gpu_limited_memory: {self._gpu_limited_memory}, device: {self.device}")
         translated_sentences = \
             await dispatch_translation(ctx.translator,
                                        ctx.texts.split("\n"),
@@ -1777,7 +1778,124 @@ class MangaTranslatorGradio(MangaTranslator):
                                        ctx, 'cpu' if self._gpu_limited_memory else self.device)
         
         return "\n".join(translated_sentences)
+    
 
+    def process_audio_translation_plus(self, audio_file=None, translator="offline", src_lang="ja",
+                                  target_lang="ENG", model_name="base", beam_size=5, best_of=5, file_output="txt", 
+                                  progress=gr.Progress()):
+        params = self.get_default_params()
+        params['translator'] = translator
+        params['translator_name'] = translator
+        params['target_lang'] = target_lang
+        params['file_output'] = file_output
+        params['model_name'] = model_name
+        params['beam_size'] = beam_size
+        params['best_of'] = best_of
+        params['src_lang'] = src_lang
+
+        device = params.get('device', 'cpu')
+        if device == "gpu_limited":
+            params['use_gpu_limited'] = True
+        elif device == "cuda":
+            params['use_gpu'] = True
+
+        return self.process_audio_translation_sync(audio_file, params, progress=progress)
+
+
+    def process_audio_translation_sync(self, audio_file=None, params={}, progress=gr.Progress()):
+        
+        file_output = params.get('file_output', 'txt')
+        file_name = os.path.splitext(audio_file.name)[0] + "." + file_output
+        try:
+            startTime = time.time()
+            self.check_audio_file_type(audio_file)
+            super().__init__(params)
+            result = asyncio.run(self.translate_audio(audio_file, params, progress=progress))
+            with open(self._result_path(file_name), 'w', encoding='utf-8') as f:
+                f.write(result)
+            file_path = self._result_path(file_name)
+            endTime = time.time()
+            totalTime = round(endTime - startTime, 2)
+            status = "Successfully translated audio.\n" + "Time taken: " + str(totalTime) + " seconds"
+        except Exception as e:
+            result = None
+            file_path = None
+            status = "Failed to translate audio:\n" + str(e)
+            
+        return result, file_path, status
+    
+    def check_audio_file_type(self, audio_file):
+        allowed_audio_extensions = ["mp3", "wav", "ogg", "flac", "m4a", "mp4", "mkv", "avi", "mov", "flv", "webm"]
+        isAllowed = False
+        file_extension = os.path.splitext(audio_file.name)[1].replace(".", "")
+        if file_extension in allowed_audio_extensions:
+            isAllowed = True
+        if not isAllowed:
+            raise ValueError("Unsupported file format. Please upload an audio file.")
+    
+    async def audio_load_model(self, model_name):
+        return whisper.load_model(model_name)
+    
+    async def transcribe_audio(self, model, file, ctx):
+        temperature = (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)
+        return whisper.transcribe(model, file.name, beam_size=ctx.beam_size, best_of=ctx.best_of, temperature=temperature, language=ctx.src_lang)
+
+    async def translate_audio(self, audio_file=None, params={}, progress=gr.Progress()):
+        ctx = Context(**params)
+        self._preprocess_params(ctx)
+        load_models_future = [
+            prepare_translation(ctx.translator),
+            self.audio_load_model(ctx.model_name)
+        ]
+        model = None
+        counter = 0
+        for future in progress.tqdm(load_models_future, desc="Preparing model", unit="steps"):
+            if counter == 0:
+                await future
+            elif counter == 1:
+                model = await future
+            counter += 1
+            
+        # model = whisper.load_model(ctx.model_name)
+        transcribed_audio = None
+        for future in progress.tqdm([self.transcribe_audio(model, audio_file, ctx)], desc="Transcribing audio", unit="steps"):
+            transcribed_audio = await future 
+
+        results = None
+        for future in progress.tqdm([self.audio_translate_text(transcribed_audio, 0, ctx)], desc="Translating audio", unit="steps"):
+            results = await future
+        return results
+
+
+
+
+    async def audio_translate_text(self, segments, start_offset, ctx):
+            srt_body = []
+            translated_sentences = await self.run_text_translation(segments, ctx)
+            for i, segment in enumerate(segments["segments"]):
+                start_time = self.convert_to_srt_time(segment["start"] + start_offset)
+                end_time = self.convert_to_srt_time(segment["end"] + start_offset)
+                text = translated_sentences[i]
+                if ctx.file_output == "srt":
+                    srt_body.append(f"{i}\n{start_time} --> {end_time}\n{text}\n")
+                else:
+                    srt_body.append(text)
+
+            self.subtitle_index = i
+            srt_subtitle = "\n".join(srt_body)
+            return srt_subtitle
+    
+    def convert_to_srt_time(self, time_in_seconds):
+        h, remainder = divmod(time_in_seconds, 3600)
+        m, s = divmod(remainder, 60)
+        ms = int((s - int(s)) * 1000)
+        srt_time = f"{int(h):02d}:{int(m):02d}:{int(s):02d},{ms:03d}"
+        return srt_time
+
+    async def run_text_translation(self, segments, ctx):
+        translator = TranslatorChain(f'{ctx.translator_name}:{ctx.target_lang}')
+        return await dispatch_translation(translator, [segment["text"] for segment in segments["segments"]], False, ctx.cuda)
+        
         
         
     def fixBadZipfile(self, zipFile):  
@@ -1839,7 +1957,7 @@ class MangaTranslatorGradio(MangaTranslator):
         image_detection_size_list = ['1024', '1536', '2048', '2560', '3072', '3584', '4096']
         
         with gr.Blocks() as interface:
-            gr.Markdown("Manga Image Translator")
+            gr.Markdown("Manga Image Translator And Audio Transcriber")
             with gr.Tab("Image"):
                 with gr.Tab("Single"):
                     with gr.Row():
@@ -1941,9 +2059,32 @@ class MangaTranslatorGradio(MangaTranslator):
                         gr.Markdown("Translator Settings")
                         with gr.Row():
                             text_translator_translator = gr.Dropdown(list(TRANSLATORS.keys()), label="Translator", value="offline")
-                            text_translator_gpt_config = gr.File(label="GPT Config (Optional for GPT Translator)", type="filepath")
                             text_translator_target_lang = gr.Dropdown(list(VALID_LANGUAGES.keys()), label="Target Language", value="ENG")
-                    
+
+            with gr.Tab("Audio"):
+                with gr.Row():
+                    with gr.Column(min_width=600):
+                        audio_file_input = gr.File(type="filepath", label="Upload Audio/Video File")
+                        audio_submit_button = gr.Button("Submit")
+                    with gr.Column(min_width=600):
+                        audio_field_output = gr.Textbox(label="Output Text", lines=10)
+                        audio_file_output = gr.File(label="Download Text File")
+                        audio_output_text = gr.Textbox(label="Status", lines=2)
+                with gr.Row():
+                    with gr.Column():
+                        gr.Markdown("Translator Settings")
+                        with gr.Row():
+                            audio_translator = gr.Dropdown(list(TRANSLATORS.keys()), label="Translator", value="offline")
+                            audio_src_lang = gr.Dropdown(list(WHISPER_LANGUAGES.keys()), label="Source Language", value="ja")
+                            audio_target_lang = gr.Dropdown(list(VALID_LANGUAGES.keys()), label="Target Language", value="ENG")
+                            audio_file_output_type = gr.Dropdown(["txt", "srt"], label="Output File Type", value="txt")
+                        gr.Markdown("Audio Detection Settings")
+                        with gr.Row():
+                            audio_model = gr.Dropdown(["tiny", "base", "small", "medium", "large"], label="Model", value="base")
+                            audio_beam_size = gr.Slider(minimum=1, maximum=20, step=1, label="Beam Size", value=5)
+                            audio_best_of = gr.Slider(minimum=1, maximum=20, step=1, label="Best Of", value=5)
+                        
+
             image_default_params = [
                 translator_translator,
                 translator_target_lang,
@@ -2010,6 +2151,22 @@ class MangaTranslatorGradio(MangaTranslator):
             
             text_submit_button.click(self.process_text_translation_sync, inputs=[text_field_input, text_translator_translator, text_translator_target_lang],
                 outputs=[text_field_output, text_file_output, text_output_text],
+                concurrency_limit=self.gradio_concurrency)
+            
+
+            audio_submit = [
+                audio_file_input,
+                audio_translator,
+                audio_src_lang,
+                audio_target_lang,
+                audio_model,
+                audio_beam_size,
+                audio_best_of,
+                audio_file_output_type
+            ]
+
+            audio_submit_button.click(self.process_audio_translation_plus, inputs=audio_submit,
+                outputs=[audio_field_output, audio_file_output, audio_output_text],
                 concurrency_limit=self.gradio_concurrency)
         
         interface.queue().launch(server_name=self.host, debug=True, share=self.share, server_port=self.port)
