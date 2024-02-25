@@ -1849,7 +1849,7 @@ class MangaTranslatorGradio(MangaTranslator):
         ]
         model = None
         counter = 0
-        for future in progress.tqdm(load_models_future, desc="Warming up the model", unit="steps"):
+        for future in progress.tqdm(load_models_future, desc="Preparing model", unit="steps"):
             if counter == 0:
                 await future
             elif counter == 1:
