@@ -115,7 +115,7 @@ class MangaTranslator():
                 'Is the correct pytorch version installed? (See https://pytorch.org/)')
         if params.get('model_dir'):
             ModelWrapper._MODEL_DIR = params.get('model_dir')
-        self.kernel_size=int(params.get('kernel_size'))
+        self.kernel_size=int(params.get('kernel_size', 3))
         os.environ['INPAINTING_PRECISION'] = params.get('inpainting_precision', 'fp32')
 
     @property
@@ -1783,7 +1783,7 @@ class MangaTranslatorGradio(MangaTranslator):
     def process_audio_translation_plus(self, audio_file=None, translator="offline", src_lang="ja",
                                   target_lang="ENG", model_name="base", beam_size=5, best_of=5, file_output="txt", 
                                   progress=gr.Progress()):
-        params = self.get_default_params()
+        params = {}
         params['translator'] = translator
         params['translator_name'] = translator
         params['target_lang'] = target_lang
@@ -1792,12 +1792,6 @@ class MangaTranslatorGradio(MangaTranslator):
         params['beam_size'] = beam_size
         params['best_of'] = best_of
         params['src_lang'] = src_lang
-
-        device = params.get('device', 'cpu')
-        if device == "gpu_limited":
-            params['use_gpu_limited'] = True
-        elif device == "cuda":
-            params['use_gpu'] = True
 
         return self.process_audio_translation_sync(audio_file, params, progress=progress)
 
@@ -1893,8 +1887,8 @@ class MangaTranslatorGradio(MangaTranslator):
         return srt_time
 
     async def run_text_translation(self, segments, ctx):
-        translator = TranslatorChain(f'{ctx.translator_name}:{ctx.target_lang}')
-        return await dispatch_translation(translator, [segment["text"] for segment in segments["segments"]], False, ctx.cuda)
+        return await dispatch_translation(ctx.translator, [segment["text"] for segment in segments["segments"]], ctx.use_mtpe, ctx,
+                                           'cpu' if self._gpu_limited_memory else self.device)
         
         
         
