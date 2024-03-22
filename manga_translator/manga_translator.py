@@ -134,11 +134,11 @@ class MangaTranslator():
 
         # Handle format
         file_ext = params.get('format')
-        if params.get('save_quality', 100) < 100:
-            if not params.get('format'):
-                file_ext = 'jpg'
-            elif params.get('format') != 'jpg':
-                raise ValueError('--save-quality of lower than 100 is only supported for .jpg files')
+        # if params.get('save_quality', 100) < 100:
+        #     if not params.get('format'):
+        #         file_ext = 'jpg'
+        #     elif params.get('format') != 'jpg':
+        #         raise ValueError('--save-quality of lower than 100 is only supported for .jpg files')
 
         if os.path.isfile(path):
             # Determine destination file path
@@ -1360,6 +1360,7 @@ class MangaTranslatorGradio(MangaTranslator):
                 with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
                     futures = []
                     zip_items = zf.namelist()
+                    zip_items = [f for f in zip_items if f.lower().endswith(('.png', '.jpg', '.jpeg', '.tiff', '.bmp', '.gif', '.webp'))]
                     
                     logger.info("Warming up the model...")
                     first_file = self.get_first_file_in_zip(zip_file.name)
@@ -1411,9 +1412,8 @@ class MangaTranslatorGradio(MangaTranslator):
                         zip_file.write(file["name"], arcname)
             return output_text, output_zip_file_name
         
-        except BadZipFile:
-            raise ValueError("The provided file is not a valid zip file. Please upload a valid zip file containing image files.")
-        
+        except BadZipFile as e:
+            raise e        
         
     async def process_image(self, image_file=None, params={}):
         self.first_run = False
@@ -1900,10 +1900,7 @@ class MangaTranslatorGradio(MangaTranslator):
             # print("Trancating file at location " + str(pos + 22)+ ".")  
             f.seek(pos + 22)   # size of 'ZIP end of central directory record' 
             f.truncate()  
-            f.close()  
-        else:  
-            # raise error, file is truncated
-            raise ValueError("The provided file is not a valid zip file. Please upload a valid zip file containing image files.")
+            f.close()
         
     def validateZipFile(self, zipFile):
         with zipfile.ZipFile(zipFile, "r") as zf:

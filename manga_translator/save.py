@@ -49,7 +49,8 @@ class ImageFormat(ExportFormat):
     SUPPORTED_FORMATS = ['png', 'webp']
 
     def _save(self, result: Image.Image, dest: str, ctx: Context):
-        result.save(dest)
+        ext = os.path.splitext(dest)[1][1:]
+        result.save(dest, quality=ctx.save_quality, format=ext)
 
 class JPGFormat(ExportFormat):
     SUPPORTED_FORMATS = ['jpg', 'jpeg']
