@@ -49,3 +49,4 @@ litellm
 pytorch_lightning
 whisper-timestamped
 ffmpeg
+multiprocess

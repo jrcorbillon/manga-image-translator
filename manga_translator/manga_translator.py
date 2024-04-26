@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import io
+from multiprocessing import Pool
 
 import cv2
 from aiohttp.web_middlewares import middleware
@@ -1319,6 +1320,8 @@ class MangaTranslatorGradio(MangaTranslator):
         self.gradio_concurrency = params.get('gradio_concurrency', 1)
         self.params = params
         logger.info(f"device: {self.device}")
+        self.pool = Pool(processes=1)
+
         
     def run_in_event_loop(self, coroutine, *args, **kwargs):
         """This function runs the given coroutine in a new event loop."""
@@ -1889,6 +1892,119 @@ class MangaTranslatorGradio(MangaTranslator):
     async def run_text_translation(self, segments, ctx):
         return await dispatch_translation(ctx.translator, [segment["text"] for segment in segments["segments"]], ctx.use_mtpe, ctx,
                                            'cpu' if self._gpu_limited_memory else self.device)
+    
+
+    async def _translate(self, ctx: Context) -> Context:
+        # -- Colorization
+        if ctx.colorizer:
+            await self._report_progress('colorizing')
+            ctx.img_colorized = await self._run_colorizer(ctx)
+        else:
+            ctx.img_colorized = ctx.input
+
+        # -- Upscaling
+        # The default text detector doesn't work very well on smaller images, might want to
+        # consider adding automatic upscaling on certain kinds of small images.
+        if ctx.upscale_ratio:
+            await self._report_progress('upscaling')
+            ctx.upscaled = await self._run_upscaling(ctx)
+        else:
+            ctx.upscaled = ctx.img_colorized
+
+        ctx.img_rgb, ctx.img_alpha = load_image(ctx.upscaled)
+
+        # -- Detection
+        await self._report_progress('detection')
+        # future = self.pool.apply_async(run_detection_sync, (ctx,))
+        # ctx.textlines, ctx.mask_raw, ctx.mask = future.get()
+        ctx.textlines, ctx.mask_raw, ctx.mask = await self._run_detection(ctx)
+        if self.verbose:
+            cv2.imwrite(self._result_path('mask_raw.png'), ctx.mask_raw)
+
+        if not ctx.textlines:
+            await self._report_progress('skip-no-regions', True)
+            # If no text was found result is intermediate image product
+            ctx.result = ctx.upscaled
+            return ctx
+        if self.verbose:
+            img_bbox_raw = np.copy(ctx.img_rgb)
+            for txtln in ctx.textlines:
+                cv2.polylines(img_bbox_raw, [txtln.pts], True, color=(255, 0, 0), thickness=2)
+            cv2.imwrite(self._result_path('bboxes_unfiltered.png'), cv2.cvtColor(img_bbox_raw, cv2.COLOR_RGB2BGR))
+
+        # -- OCR
+        await self._report_progress('ocr')
+        future = self.pool.apply_async(run_ocr_sync, (ctx,))
+        ctx.textlines = future.get()
+        # ctx.textlines = await self._run_ocr(ctx)
+        if not ctx.textlines:
+            await self._report_progress('skip-no-text', True)
+            # If no text was found result is intermediate image product
+            ctx.result = ctx.upscaled
+            return ctx
+
+        # -- Textline merge
+        await self._report_progress('textline_merge')
+        # future = executor.submit(self.run_in_event_loop, self._run_textline_merge, ctx)
+        # ctx.text_regions = future.result()
+        ctx.text_regions = await self._run_textline_merge(ctx)
+
+        if self.verbose:
+            bboxes = visualize_textblocks(cv2.cvtColor(ctx.img_rgb, cv2.COLOR_BGR2RGB), ctx.text_regions)
+            cv2.imwrite(self._result_path('bboxes.png'), bboxes)
+
+        # -- Translation
+        await self._report_progress('translating')
+        # future = executor.submit(self.run_in_event_loop, self._run_text_translation, ctx)
+        # ctx.text_regions = future.result()
+        ctx.text_regions = await self._run_text_translation(ctx)
+        await self._report_progress('after-translating')
+
+
+        if not ctx.text_regions:
+            await self._report_progress('error-translating', True)
+            ctx.result = ctx.upscaled
+            return ctx
+        elif ctx.text_regions == 'cancel':
+            await self._report_progress('cancelled', True)
+            ctx.result = ctx.upscaled
+            return ctx
+
+        # -- Mask refinement
+        # (Delayed to take advantage of the region filtering done after ocr and translation)
+        if ctx.mask is None:
+            await self._report_progress('mask-generation')
+            ctx.mask = await self._run_mask_refinement(ctx)
+
+        if self.verbose:
+            inpaint_input_img = await dispatch_inpainting('none', ctx.img_rgb, ctx.mask, ctx.inpainting_size,
+                                                          self.using_gpu, self.verbose)
+            cv2.imwrite(self._result_path('inpaint_input.png'), cv2.cvtColor(inpaint_input_img, cv2.COLOR_RGB2BGR))
+            cv2.imwrite(self._result_path('mask_final.png'), ctx.mask)
+
+        # -- Inpainting
+        await self._report_progress('inpainting')
+        # future = executor.submit(self.run_in_event_loop, self._run_inpainting, ctx)
+        # ctx.img_inpainted = future.result()
+        ctx.img_inpainted = await self._run_inpainting(ctx)
+
+        ctx.gimp_mask = np.dstack((cv2.cvtColor(ctx.img_inpainted, cv2.COLOR_RGB2BGR), ctx.mask))
+
+        if self.verbose:
+            cv2.imwrite(self._result_path('inpainted.png'), cv2.cvtColor(ctx.img_inpainted, cv2.COLOR_RGB2BGR))
+
+        # -- Rendering
+        await self._report_progress('rendering')
+        ctx.img_rendered = await self._run_text_rendering(ctx)
+
+        await self._report_progress('finished', True)
+        ctx.result = dump_image(ctx.input, ctx.img_rendered, ctx.img_alpha)
+
+        if ctx.revert_upscaling:
+            await self._report_progress('downscaling')
+            ctx.result = ctx.result.resize(ctx.input.size)
+
+        return ctx
         
         
         
@@ -1977,7 +2093,7 @@ class MangaTranslatorGradio(MangaTranslator):
                         translator_gpt_config = gr.File(label="GPT Config (Optional for GPT Translator)", type="filepath")
                         translator_target_lang = gr.Dropdown(list(VALID_LANGUAGES.keys()), label="Target Language", value="ENG")
                         translator_device = gr.Radio(list(device_selected), label="Device", value=self.device)
-                        translator_threads = gr.Slider(minimum=1, maximum=10, step=1, label="Threads", value=1)
+                        translator_threads = gr.Slider(minimum=1, maximum=4, step=1, label="Threads", value=1)
                             
                 with gr.Column():
                     gr.Markdown("Image Settings")
@@ -2223,3 +2339,23 @@ class MangaTranslatorGradio(MangaTranslator):
                 concurrency_limit=self.gradio_concurrency)
         
         interface.queue(default_concurrency_limit=2).launch(server_name=self.host, debug=True, share=self.share, server_port=self.port)
+
+
+async def run_ocr(ctx: Context):
+        textlines = await dispatch_ocr(ctx.ocr, ctx.img_rgb, ctx.textlines, ctx, 'cuda', False)
+
+        new_textlines = []
+        for textline in textlines:
+            if textline.text.strip():
+                if ctx.font_color_fg:
+                    textline.fg_r, textline.fg_g, textline.fg_b = ctx.font_color_fg
+                if ctx.font_color_bg:
+                    textline.bg_r, textline.bg_g, textline.bg_b = ctx.font_color_bg
+                new_textlines.append(textline)
+        return new_textlines
+
+
+def run_ocr_sync(ctx):
+    loop = asyncio.get_event_loop()
+    result = loop.run_until_complete(run_ocr(ctx))
+    return result
