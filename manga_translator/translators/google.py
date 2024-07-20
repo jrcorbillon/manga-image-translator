@@ -239,6 +239,8 @@ class GoogleTranslator(CommonTranslator):
                     translated_parts.append(part[4][1][0])
                 except IndexError:
                     translated_parts.append(part[0])
+                except TypeError:
+                    translated_parts.append(part[0])
         except IndexError:
             translated_parts.append("")
         translated = (' ' if should_spacing else '').join(translated_parts)
