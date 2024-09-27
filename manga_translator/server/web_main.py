@@ -51,6 +51,7 @@ VALID_TRANSLATORS = [
     'papago',
     'caiyun',
     'gpt3.5',
+    'gpt4',
     'nllb',
     'nllb_big',
     'sugoi',
@@ -58,6 +59,9 @@ VALID_TRANSLATORS = [
     'jparacrawl_big',
     'm2m100',
     'm2m100_big',
+    'qwen2',
+    'qwen2_big',
+    'sakura',
     'none',
     'original',
 ]
@@ -148,8 +152,8 @@ async def handle_post(request):
     target_language = 'CHS'
     detector = 'default'
     direction = 'auto'
-    if 'tgt_lang' in data:
-        target_language = data['tgt_lang'].upper()
+    if 'target_lang' in data:
+        target_language = data['target_lang'].upper()
         # TODO: move dicts to their own files to reduce load time
         if target_language not in VALID_LANGUAGES:
             target_language = 'CHS'
@@ -219,7 +223,7 @@ async def run_async(request):
     #         return web.json_response({'state': 'error'})
     else:
         os.makedirs(f'result/{task_id}/', exist_ok=True)
-        img.save(f'result/{task_id}/input.jpg')
+        img.save(f'result/{task_id}/input.png')
         QUEUE.append(task_id)
         now = time.time()
         TASK_DATA[task_id] = {
@@ -436,8 +440,7 @@ async def submit_async(request):
         }
     elif task_id not in TASK_DATA or task_id not in TASK_STATES:
         os.makedirs(f'result/{task_id}/', exist_ok=True)
-        img = img.convert('RGB')
-        img.save(f'result/{task_id}/input.jpg')
+        img.save(f'result/{task_id}/input.png')
         QUEUE.append(task_id)
         TASK_STATES[task_id] = {
             'info': 'pending',
@@ -464,8 +467,7 @@ async def manual_translate_async(request):
     task_id = secrets.token_hex(16)
     print(f'New `manual-translate` task {task_id}')
     os.makedirs(f'result/{task_id}/', exist_ok=True)
-    img = img.convert('RGB')
-    img.save(f'result/{task_id}/input.jpg')
+    img.save(f'result/{task_id}/input.png')
     now = time.time()
     QUEUE.append(task_id)
     # TODO: Add form fields to manual translate website
