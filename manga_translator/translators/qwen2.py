@@ -45,6 +45,7 @@ class Qwen2Translator(OfflineTranslator):
         'without referencing machine translations. '
         'You must only translate the story, '
         'never interpret it. '
+        'The context is a chinese donghua, so relate the translation to the context.'
         'If there is any issue in the text, '
         'output it as is.\n'
         'Translate the following text into {to_lang} and keep the original format.\n'
@@ -119,12 +120,11 @@ class Qwen2Translator(OfflineTranslator):
             new_translations = new_translations + [''] * (query_size - len(new_translations))
 
         translations.extend([t.strip() for t in new_translations])
-
         return translations
 
     def tokenize(self, queries, lang):
         prompt = f"""Translate into {lang} and keep the original format.\n"""
-        prompt += '\nOriginal:'
+        # prompt += '\nOriginal:'
         for i, query in enumerate(queries):
             prompt += f'\n<|{i+1}|>{query}'
 
