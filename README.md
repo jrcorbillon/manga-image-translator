@@ -13,33 +13,41 @@
 
 Some manga/images will never be translated, therefore this project is born.
 
-- [Preview](#samples)
-- [Demo](#online-demo)
-- [Disclaimer](#disclaimer)
-- [Getting Started](#installation)
-    - [Installation](#installation)
-        - [Venv](#pipvenv)
-        - [Poetry](#poetry)
-        - [Extra Windows Info](#additional-instructions-for-windows)
-        - [Docker](#docker)
-    - [Usage](#usage)
-        - [Batch mode](#batch-mode-default)
-        - [Demo mode](#demo-mode)
-        - [Web mode](#web-mode)
-        - [Api mode](#api-mode)
-    - [Related Projects](#related-projects)
-- [Docs](#docs)
+- [Image/Manga Translator](#imagemanga-translator)
+  - [Samples](#samples)
+  - [Online Demo](#online-demo)
+  - [Disclaimer](#disclaimer)
+  - [Installation](#installation)
+    - [Pip/venv](#pipvenv)
+    - [Poetry](#poetry)
+      - [Additional instructions for **Windows**](#additional-instructions-for-windows)
+    - [Docker](#docker)
+      - [Hosting the web server](#hosting-the-web-server)
+      - [Using as CLI](#using-as-cli)
+      - [Setting Translation Secrets](#setting-translation-secrets)
+      - [Using with Nvidia GPU](#using-with-nvidia-gpu)
+      - [Building locally](#building-locally)
+  - [Usage](#usage)
+    - [Batch mode (default)](#batch-mode-default)
+    - [Demo mode](#demo-mode)
+    - [Web Mode](#web-mode)
+    - [Api Mode](#api-mode)
+  - [Related Projects](#related-projects)
+  - [Docs](#docs)
     - [Recommended Modules](#recommended-modules)
-    - [Args](#options)
-    - [Languages](#language-code-reference)
-    - [Translators](#translators-reference)
-    - [GPT config](#gpt-config-reference)
-    - [Gimp](#using-gimp-for-rendering)
-    - [Api Docs](#api-documentation)
-        - [v1](#api-documentation)
-        - [v2](#api-documentation)
-- [Roadmap](#next-steps)
-- [Support Us](#support-us)
+      - [Tips to improve translation quality](#tips-to-improve-translation-quality)
+    - [Options](#options)
+    - [Language Code Reference](#language-code-reference)
+    - [Translators Reference](#translators-reference)
+    - [GPT Config Reference](#gpt-config-reference)
+    - [Using Gimp for rendering](#using-gimp-for-rendering)
+    - [Api Documentation](#api-documentation)
+      - [Synchronous mode](#synchronous-mode)
+      - [Asynchronous mode](#asynchronous-mode)
+      - [Manual translation](#manual-translation)
+  - [Next steps](#next-steps)
+  - [Support Us](#support-us)
+    - [Thanks To All Our Contributors :](#thanks-to-all-our-contributors-)
 
 ## Samples
 
@@ -162,8 +170,6 @@ $ source venv/bin/activate
 
 # Install the dependencies
 $ pip install -r requirements.txt
-
-$ pip install git+https://github.com/kodalli/pydensecrf.git
 ```
 
 ### Poetry
@@ -364,7 +370,7 @@ Colorizer: **mc2**
                                              image folder if using batch mode
 -o, --dest DEST                              Path to the destination folder for translated images in
                                              batch mode
--l, --target-lang {CHS,CHT,CSY,NLD,ENG,FRA,DEU,HUN,ITA,JPN,KOR,PLK,PTB,ROM,RUS,ESP,TRK,UKR,VIN,ARA,CNR,SRP,HRV,THA,IND}
+-l, --target-lang {CHS,CHT,CSY,NLD,ENG,FRA,DEU,HUN,ITA,JPN,KOR,PLK,PTB,ROM,RUS,ESP,TRK,UKR,VIN,ARA,CNR,SRP,HRV,THA,IND,FIL}
                                              Destination language
 -v, --verbose                                Print debug info and save intermediate images in result
                                              folder
@@ -375,12 +381,13 @@ Colorizer: **mc2**
 --overwrite                                  Overwrite already translated images in batch mode.
 --skip-no-text                               Skip image without text (Will not be saved).
 --model-dir MODEL_DIR                        Model directory (by default ./models in project root)
---use-gou                                   Turn on/off gpu
+--use-gpu                                   Turn on/off gpu
 --use-gpu-limited                           Turn on/off gpu (excluding offline translator)
 --detector {default,ctd,craft,none}          Text detector used for creating a text mask from an
                                              image, DO NOT use craft for manga, it's not designed
                                              for it
---ocr {32px,48px,48px_ctc}                   Optical character recognition (OCR) model to use
+--ocr {32px,48px,48px_ctc,mocr}              Optical character recognition (OCR) model to use
+--use-mocr-merge                             Use bbox merge when Manga OCR inference.
 --inpainter {default,lama_large,lama_mpe,sd,none,original}
                                              Inpainting model to use
 --upscaler {waifu2x,esrgan,4xultrasharp}     Upscaler to use. --upscale-ratio has to be set for it
@@ -388,7 +395,7 @@ Colorizer: **mc2**
 --upscale-ratio UPSCALE_RATIO                Image upscale ratio applied before detection. Can
                                              improve text detection.
 --colorizer {mc2}                            Colorization model to use.
---translator {google,youdao,baidu,deepl,papago,caiyun,gpt3,gpt3.5,gpt4,none,original,offline,nllb,nllb_big,sugoi,jparacrawl,jparacrawl_big,m2m100,m2m100_big}
+--translator {google,youdao,baidu,deepl,papago,caiyun,gpt3,gpt3.5,gpt4,none,original,offline,nllb,nllb_big,sugoi,jparacrawl,jparacrawl_big,m2m100,m2m100_big,sakura}
                                              Language translator to use
 --translator-chain TRANSLATOR_CHAIN          Output of one translator goes in another. Example:
                                              --translator-chain "google:JPN;sugoi:ENG".
@@ -454,6 +461,8 @@ Colorizer: **mc2**
 --save-text-file SAVE_TEXT_FILE              Like --save-text but with a specified file path.
 --filter-text FILTER_TEXT                    Filter regions by their text with a regex. Example
                                              usage: --text-filter ".*badtext.*"
+--skip-lang                                  Skip translation if source image is one of the provide languages, 
+                                             use comma to separate multiple languages. Example: JPN,ENG
 --prep-manual                                Prepare for manual typesetting by outputting blank,
                                              inpainted images, plus copies of the original for
                                              reference
@@ -506,13 +515,14 @@ SRP: Serbian
 HRV: Croatian
 THA: Thai
 IND: Indonesian
+FIL: Filipino (Tagalog)
 ```
 
 ### Translators Reference
 
 | Name       | API Key | Offline | Note                                                   |
 |------------|---------|---------|--------------------------------------------------------|
-| google     |         |         |                                                        |
+| <s>google</s>     |         |         |         Disabled temporarily                                               |
 | youdao     | ✔️      |         | Requires `YOUDAO_APP_KEY` and `YOUDAO_SECRET_KEY`      |
 | baidu      | ✔️      |         | Requires `BAIDU_APP_ID` and `BAIDU_SECRET_KEY`         |
 | deepl      | ✔️      |         | Requires `DEEPL_AUTH_KEY`                              |
@@ -521,6 +531,7 @@ IND: Indonesian
 | gpt3.5     | ✔️      |         | Implements gpt-3.5-turbo. Requires `OPENAI_API_KEY`    |
 | gpt4       | ✔️      |         | Implements gpt-4. Requires `OPENAI_API_KEY`            |
 | papago     |         |         |                                                        |
+| sakura     |         |         |Requires `SAKURA_API_BASE`                               |
 | offline    |         | ✔️      | Chooses most suitable offline translator for language  |
 | sugoi      |         | ✔️      | Sugoi V4.0 Models                                      |
 | m2m100     |         | ✔️      | Supports every language                                |

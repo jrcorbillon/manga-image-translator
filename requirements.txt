@@ -49,3 +49,8 @@ litellm==0.11.1
 pytorch_lightning
 whisper-timestamped==1.14.4
 ffmpeg==1.4
+manga-ocr
+langdetect
+pydensecrf@https://github.com/lucasb-eyer/pydensecrf/archive/refs/heads/master.zip
+accelerate
+bitsandbytes
