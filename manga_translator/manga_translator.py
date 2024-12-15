@@ -1374,13 +1374,15 @@ class MangaTranslatorGradio(MangaTranslator):
             return str
        
     async def process_zip_file(self, zip_file, translator_params=None, progress=gr.Progress()):
-        self.fixBadZipfile(zip_file.name)
+        # self.fixBadZipfile(zip_file.name)
+        # print("zip path: ", zip_file.name)
         # self.validateZipFile(zip_file.name)
         zip_file_name = os.path.splitext(os.path.basename(zip_file.name))[0].strip()
         output_text = ""
         output_files = []
         params_hash = translator_params.get('params_hash', '')
         threads = translator_params.get('threads', 1)
+
         try:
             with zipfile.ZipFile(zip_file.name, "r") as zf:
                 with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
@@ -1424,7 +1426,7 @@ class MangaTranslatorGradio(MangaTranslator):
                     for future in progress.tqdm(futures, desc="Processing Files", unit="files"):
                         out_file_name = future.result()
                         if not os.path.exists(out_file_name):
-                            out_file_name = out_file_name.replace(f"-{params_hash}-translated", "")
+                            out_file_name = out_file_name.replace(f"-{params_hash}-translated." + translator_params.get('format', 'jpg'), "")
                         output_files.append({"name":out_file_name, "data": None})
             
             # Create a new zip file
@@ -1683,6 +1685,7 @@ class MangaTranslatorGradio(MangaTranslator):
         except Exception as e:
             dest = None
             status = "Failed to translate zip file:\n" + str(e)
+            raise e
             
         return dest, status
         
@@ -1882,16 +1885,17 @@ class MangaTranslatorGradio(MangaTranslator):
             transcribed_audio = await future 
 
         results = None
-        for future in progress.tqdm([self.audio_translate_text(transcribed_audio, 0, ctx)], desc="Translating audio", unit="steps"):
-            results = await future
+        # for future in progress.tqdm([self.audio_translate_text(transcribed_audio, 0, ctx)], desc="Translating audio", unit="steps"):
+        #     results = await future
+        results = await self.audio_translate_text(transcribed_audio, 0, ctx, progress)
         return results
 
 
 
 
-    async def audio_translate_text(self, segments, start_offset, ctx):
+    async def audio_translate_text(self, segments, start_offset, ctx, progress):
             srt_body = []
-            translated_sentences = await self.run_text_translation(segments, ctx)
+            translated_sentences = await self.run_text_translation(segments, ctx, progress)
             for i, segment in enumerate(segments["segments"]):
                 start_time = self.convert_to_srt_time(segment["start"] + start_offset)
                 end_time = self.convert_to_srt_time(segment["end"] + start_offset)
@@ -1912,10 +1916,13 @@ class MangaTranslatorGradio(MangaTranslator):
         srt_time = f"{int(h):02d}:{int(m):02d}:{int(s):02d},{ms:03d}"
         return srt_time
 
-    async def run_text_translation(self, segments, ctx):
-        return await dispatch_translation(ctx.translator, [segment["text"] for segment in segments["segments"]], ctx.use_mtpe, ctx,
+    async def run_text_translation(self, segments, ctx, progress):
+        translated_sentences = []
+        for segment in progress.tqdm(segments["segments"], desc="Translating segments", unit="segment"):
+            translated = await dispatch_translation(ctx.translator, [segment["text"]], ctx.use_mtpe, ctx,
                                            'cpu' if self._gpu_limited_memory else self.device)
-    
+            translated_sentences.extend(translated)
+        return translated_sentences
 
     async def _translate(self, ctx: Context) -> Context:
         # -- Colorization
@@ -2031,15 +2038,47 @@ class MangaTranslatorGradio(MangaTranslator):
         
         
         
-    def fixBadZipfile(self, zipFile):  
-        f = open(zipFile, 'r+b')  
-        data = f.read()  
-        pos = data.find(b'\x50\x4b\x05\x06') # End of central directory signature  
-        if (pos > 0):  
-            # print("Trancating file at location " + str(pos + 22)+ ".")  
-            f.seek(pos + 22)   # size of 'ZIP end of central directory record' 
-            f.truncate()  
-            f.close()
+    def fixBadZipfile(self, zipFile):
+        """Fix a corrupted zip file by finding and correcting the central directory signature."""
+        with open(zipFile, 'r+b') as f:
+            data = f.read()
+            pos = data.find(b'\x50\x4b\x05\x06')  # End of central directory signature
+            if pos > 0:
+                # Check if there's any data after the signature
+                if pos + 22 > len(data):
+                    # The directory length is too short, try to find an alternative signature
+                    pos = data.rfind(b'\x50\x4b\x05\x06', 0, pos)
+                
+                if pos > 0:
+                    f.seek(pos + 22)   # size of 'ZIP end of central directory record'
+                    f.truncate()
+                    f.close()
+                    return
+                    
+            # If we couldn't find a valid signature, try an alternative approach
+            pos = data.find(b'\x50\x4b\x01\x02')  # Central directory file header signature
+            if pos > 0:
+                # Scan backwards for the end of central directory signature
+                pos = data.rfind(b'\x50\x4b\x05\x06', 0, pos + 1000)  # Look within reasonable range
+                if pos > 0:
+                    f.seek(pos + 22)
+                    f.truncate()
+                    f.close()
+                    return
+                    
+            # If all else fails, try to find the last valid file entry
+            pos = data.rfind(b'\x50\x4b\x03\x04')  # Local file header signature
+            if pos > 0:
+                f.seek(pos)
+                # Read the file name length
+                f.seek(pos + 26)
+                name_length = int.from_bytes(f.read(2), 'little')
+                extra_length = int.from_bytes(f.read(2), 'little')
+                # Skip to the end of this file entry
+                f.seek(pos + 30 + name_length + extra_length)
+                f.truncate()
+                f.close()
+                return
         
     def validateZipFile(self, zipFile):
         with zipfile.ZipFile(zipFile, "r") as zf:
@@ -2084,7 +2123,8 @@ class MangaTranslatorGradio(MangaTranslator):
         colorizer_list = ['None']
         colorizer_list.extend(COLORIZERS.keys())
         device_selected = [self.device]
-        image_detection_size_list = ['1024', '1536', '2048', '2560', '3072', '3584', '4096']
+        image_detection_size_list = ['1024', '1536', '2048', '2560', '3072', '3584', '4096', '4608', '5120', '5632', '6144', '6656', '7168', '7680', '8192']
+
         
         with gr.Blocks() as interface:
             gr.Markdown("Manga Image Translator And Audio Transcriber")
@@ -2210,7 +2250,7 @@ class MangaTranslatorGradio(MangaTranslator):
                             audio_file_output_type = gr.Dropdown(["txt", "srt"], label="Output File Type", value="txt")
                         gr.Markdown("Audio Detection Settings")
                         with gr.Row():
-                            audio_model = gr.Dropdown(["tiny", "base", "small", "medium", "large"], label="Model", value="base")
+                            audio_model = gr.Dropdown(["tiny", "base", "small", "medium", "large", "large-v3", "turbo"], label="Model", value="base")
                             audio_beam_size = gr.Slider(minimum=1, maximum=20, step=1, label="Beam Size", value=5)
                             audio_best_of = gr.Slider(minimum=1, maximum=20, step=1, label="Best Of", value=5)
                         
@@ -2303,7 +2343,7 @@ class MangaTranslatorGradio(MangaTranslator):
         
         
     async def start(self):
-        image_detection_size_list = ['1024', '1536', '2048', '2560', '3072', '3584', '4096']
+        image_detection_size_list = ['1024', '1536', '2048', '2560', '3072', '3584', '4096', '4608', '5120', '5632', '6144', '6656', '7168', '7680', '8192']
         with gr.Blocks() as interface:
             gr.Markdown("Manga Image Translator")
             with gr.Tab("Single"):
